@@ -31,6 +31,7 @@
     <link rel="apple-touch-icon" href="https://i.postimg.cc/nzP9sgxr/chan-125.png">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <style>
         /* --- 全局与主题样式 --- */
@@ -1496,6 +1497,174 @@
 
         .message-input-area .icon-btn.send-btn {
             font-size: 18px;
+        }
+
+        /* AI聊天界面样式 */
+        #ai-chat-screen .message-area {
+            background-color: #f5f5f5;
+            padding: 15px;
+        }
+
+        #ai-chat-screen .ai-message-wrapper {
+            display: flex;
+            margin-bottom: 15px;
+            align-items: flex-start;
+        }
+
+        #ai-chat-screen .ai-message-wrapper.user {
+            justify-content: flex-end;
+        }
+
+        #ai-chat-screen .ai-message-wrapper.assistant {
+            justify-content: flex-start;
+        }
+
+        #ai-chat-screen .ai-message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            line-height: 1.5;
+            font-size: 15px;
+        }
+
+        #ai-chat-screen .ai-message-wrapper.user .ai-message-bubble {
+            background-color: var(--primary-color);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        #ai-chat-screen .ai-message-wrapper.assistant .ai-message-bubble {
+            background-color: white;
+            color: var(--text-color);
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        #ai-chat-screen .ai-typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+            background-color: white;
+            border-radius: 18px;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        #ai-chat-screen .ai-typing-indicator span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #999;
+            animation: typing 1.4s infinite;
+        }
+
+        #ai-chat-screen .ai-typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        #ai-chat-screen .ai-typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.7;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        /* AI聊天Markdown样式 */
+        #ai-chat-screen .ai-message-bubble p {
+            margin: 0.5em 0;
+        }
+
+        #ai-chat-screen .ai-message-bubble p:first-child {
+            margin-top: 0;
+        }
+
+        #ai-chat-screen .ai-message-bubble p:last-child {
+            margin-bottom: 0;
+        }
+
+        #ai-chat-screen .ai-message-bubble h1,
+        #ai-chat-screen .ai-message-bubble h2,
+        #ai-chat-screen .ai-message-bubble h3,
+        #ai-chat-screen .ai-message-bubble h4,
+        #ai-chat-screen .ai-message-bubble h5,
+        #ai-chat-screen .ai-message-bubble h6 {
+            margin: 0.8em 0 0.4em 0;
+            font-weight: 600;
+        }
+
+        #ai-chat-screen .ai-message-bubble h1:first-child,
+        #ai-chat-screen .ai-message-bubble h2:first-child,
+        #ai-chat-screen .ai-message-bubble h3:first-child {
+            margin-top: 0;
+        }
+
+        #ai-chat-screen .ai-message-bubble code {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        #ai-chat-screen .ai-message-bubble pre {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 0.8em 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        #ai-chat-screen .ai-message-bubble pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+
+        #ai-chat-screen .ai-message-bubble ul,
+        #ai-chat-screen .ai-message-bubble ol {
+            margin: 0.5em 0;
+            padding-left: 1.5em;
+        }
+
+        #ai-chat-screen .ai-message-bubble li {
+            margin: 0.3em 0;
+        }
+
+        #ai-chat-screen .ai-message-bubble blockquote {
+            border-left: 3px solid rgba(0, 0, 0, 0.2);
+            padding-left: 12px;
+            margin: 0.8em 0;
+            color: rgba(0, 0, 0, 0.7);
+        }
+
+        #ai-chat-screen .ai-message-bubble strong {
+            font-weight: 600;
+        }
+
+        #ai-chat-screen .ai-message-bubble em {
+            font-style: italic;
+        }
+
+        #ai-chat-screen .ai-message-bubble a {
+            color: var(--primary-color);
+            text-decoration: underline;
+        }
+
+        #ai-chat-screen .ai-message-bubble hr {
+            border: none;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            margin: 1em 0;
         }
 
         #multi-select-bar {
@@ -5848,6 +6017,41 @@ html, body {
     <div id="font-settings-screen" class="screen"></div>
     <div id="customize-screen" class="screen"></div>
     <div id="tutorial-screen" class="screen"></div>
+    <div id="ai-chat-screen" class="screen">
+        <header class="app-header">
+            <button class="back-btn" data-target="home-container">‹</button>
+            <div class="title-container">
+                <h1 class="title">AI聊天</h1>
+            </div>
+            <div class="action-btn-group">
+                <button class="action-btn" id="clear-ai-chat-btn" title="清空聊天记录">
+                    <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px;">
+                        <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+        <div class="content" style="display: flex; flex-direction: column; height: 100%; padding: 0;">
+            <div id="ai-chat-messages" class="message-area" style="flex: 1; overflow-y: auto; padding: 15px; background-color: #f5f5f5;"></div>
+            <div class="chat-input-wrapper" style="padding: 10px; background-color: white; border-top: 1px solid #eee;">
+                <div class="message-input-area">
+                    <input type="text" id="ai-chat-input" placeholder="输入消息..." autocomplete="off" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; font-size: 15px; outline: none;">
+                    <button id="ai-chat-send-btn" class="icon-btn send-btn" style="width: 40px; height: 40px; border-radius: 50%; background-color: var(--primary-color); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; margin-left: 8px;">➤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- AI聊天清空确认弹窗 -->
+    <div id="clear-ai-chat-modal" class="modal-overlay">
+        <div class="modal-window">
+            <h3>确认清空</h3>
+            <p style="margin: 15px 0; color: #666;">确定要清空所有聊天记录吗？此操作无法撤销。</p>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                <button class="btn btn-secondary" id="cancel-clear-ai-chat-btn" style="flex: 1; min-width: 0;">取消</button>
+                <button class="btn btn-secondary" id="confirm-clear-ai-chat-btn" style="flex: 1; min-width: 0;">确认清空</button>
+            </div>
+        </div>
+    </div>
   <div id="forum-screen" class="screen">
   <header class="app-header">
         <button class="back-btn" data-target="chat-list-screen">‹</button>
@@ -7315,6 +7519,7 @@ const defaultIcons = {
             'ai-space-signal': { name: '心动讯号', icon: 'https://i.postimg.cc/tJ0g1C0m/heart.png' },
             'ai-space-music': { name: '音乐', icon: 'https://i.postimg.cc/d10J4VzR/image.png' },
             'ai-space-phone': { name: '电话', icon: 'https://i.postimg.cc/W35G2FzW/phone.png' },
+            'ai-chat-screen': {name: 'AI聊天', url: 'https://i.postimg.cc/50FqT8GL/chan-125.png'},
         };
 
         let db = {
@@ -7531,6 +7736,9 @@ const locationBtn = document.getElementById('location-btn'),
                 });
                 this.db.version(2).stores({
                     image_storage: 'id' // 只需一个主键 'id'
+                });
+                this.db.version(3).stores({
+                    aiChatHistory: 'id, role, content, timestamp' // AI聊天历史记录
                 });
 
                 this.cache = new Map();
@@ -8615,6 +8823,11 @@ ensureDataIntegrity(db);
             // Close all overlays and sidebars
             const overlays = document.querySelectorAll('.modal-overlay, .action-sheet-overlay, .settings-sidebar');
             overlays.forEach(o => o.classList.remove('visible', 'open'));
+            
+            // 如果切换到AI聊天屏幕，加载历史记录
+            if (targetId === 'ai-chat-screen' && typeof window.loadAiChatHistory === 'function') {
+                window.loadAiChatHistory();
+            }
         };
         // START: 新增HTML转义函数
 function escapeHTML(str) {
@@ -10089,6 +10302,257 @@ if (!db.userDiaries) {
                     switchScreen(navLink.getAttribute('data-target'));
                 }
             });
+
+            // AI聊天功能
+            let aiChatMessages = []; // 存储对话历史
+            
+            const aiChatMessagesArea = document.getElementById('ai-chat-messages');
+            const aiChatInput = document.getElementById('ai-chat-input');
+            const aiChatSendBtn = document.getElementById('ai-chat-send-btn');
+
+            // 保存聊天记录到数据库
+            async function saveAiChatMessage(role, content) {
+                try {
+                    const messageId = `ai_chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    await dataStorage.db.aiChatHistory.add({
+                        id: messageId,
+                        role: role,
+                        content: content,
+                        timestamp: Date.now()
+                    });
+                } catch (error) {
+                    console.error('保存AI聊天记录失败:', error);
+                }
+            }
+
+            // 从数据库加载聊天记录
+            async function loadAiChatHistory() {
+                try {
+                    const messages = await dataStorage.db.aiChatHistory
+                        .orderBy('timestamp')
+                        .toArray();
+                    
+                    // 清空当前消息数组和显示区域
+                    aiChatMessages = [];
+                    if (aiChatMessagesArea) {
+                        aiChatMessagesArea.innerHTML = '';
+                    }
+                    
+                    // 恢复消息
+                    for (const msg of messages) {
+                        aiChatMessages.push({ role: msg.role, content: msg.content });
+                        if (aiChatMessagesArea) {
+                            addAiMessage(msg.role, msg.content);
+                        }
+                    }
+                } catch (error) {
+                    console.error('加载AI聊天记录失败:', error);
+                }
+            }
+
+            // 清空聊天记录
+            async function clearAiChatHistory() {
+                try {
+                    await dataStorage.db.aiChatHistory.clear();
+                    aiChatMessages = [];
+                    if (aiChatMessagesArea) {
+                        aiChatMessagesArea.innerHTML = '';
+                    }
+                    showToast('聊天记录已清空');
+                } catch (error) {
+                    console.error('清空AI聊天记录失败:', error);
+                    showToast('清空聊天记录失败');
+                }
+            }
+
+            // 显示消息的函数
+            function addAiMessage(role, content) {
+                if (!aiChatMessagesArea) return;
+                
+                const messageWrapper = document.createElement('div');
+                messageWrapper.className = `ai-message-wrapper ${role}`;
+                
+                const messageBubble = document.createElement('div');
+                messageBubble.className = 'ai-message-bubble';
+                
+                // 如果是AI的消息，渲染Markdown；用户消息保持纯文本
+                if (role === 'assistant' && typeof marked !== 'undefined') {
+                    // 使用marked.js渲染Markdown
+                    messageBubble.innerHTML = marked.parse(content);
+                } else {
+                    // 用户消息使用textContent防止XSS
+                    messageBubble.textContent = content;
+                }
+                
+                messageWrapper.appendChild(messageBubble);
+                aiChatMessagesArea.appendChild(messageWrapper);
+                
+                // 滚动到底部
+                aiChatMessagesArea.scrollTop = aiChatMessagesArea.scrollHeight;
+            }
+
+            // 显示打字指示器
+            function showTypingIndicator() {
+                const typingWrapper = document.createElement('div');
+                typingWrapper.className = 'ai-message-wrapper assistant';
+                typingWrapper.id = 'ai-typing-indicator';
+                
+                const typingIndicator = document.createElement('div');
+                typingIndicator.className = 'ai-typing-indicator';
+                typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+                
+                typingWrapper.appendChild(typingIndicator);
+                aiChatMessagesArea.appendChild(typingWrapper);
+                aiChatMessagesArea.scrollTop = aiChatMessagesArea.scrollHeight;
+            }
+
+            // 移除打字指示器
+            function removeTypingIndicator() {
+                const indicator = document.getElementById('ai-typing-indicator');
+                if (indicator) {
+                    indicator.remove();
+                }
+            }
+
+            // 发送消息并获取AI回复
+            async function sendAiMessage() {
+                const message = aiChatInput.value.trim();
+                if (!message) return;
+
+                // 检查API设置
+                if (!db.apiSettings || !db.apiSettings.url || !db.apiSettings.key || !db.apiSettings.model) {
+                    showToast('请先在API设置中配置API信息');
+                    return;
+                }
+
+                // 禁用输入和按钮
+                aiChatInput.disabled = true;
+                aiChatSendBtn.disabled = true;
+
+                // 显示用户消息
+                addAiMessage('user', message);
+                
+                // 添加到消息历史
+                aiChatMessages.push({ role: 'user', content: message });
+                
+                // 保存用户消息到数据库
+                await saveAiChatMessage('user', message);
+                
+                // 清空输入框
+                aiChatInput.value = '';
+
+                // 显示打字指示器
+                showTypingIndicator();
+
+                try {
+                    // 准备消息格式
+                    let messagesToSend = aiChatMessages.map(msg => {
+                        if (db.apiSettings.provider === 'gemini') {
+                            return {
+                                role: msg.role === 'user' ? 'user' : 'model',
+                                parts: [{ text: msg.content }]
+                            };
+                        } else {
+                            return {
+                                role: msg.role,
+                                content: msg.content
+                            };
+                        }
+                    });
+
+                    // 调用AI API
+                    const response = await callAiApi(messagesToSend);
+                    
+                    // 移除打字指示器
+                    removeTypingIndicator();
+                    
+                    // 显示AI回复
+                    addAiMessage('assistant', response);
+                    
+                    // 添加到消息历史（使用原始格式）
+                    aiChatMessages.push({ role: 'assistant', content: response });
+                    
+                    // 保存AI回复到数据库
+                    await saveAiChatMessage('assistant', response);
+                    
+                } catch (error) {
+                    // 移除打字指示器
+                    removeTypingIndicator();
+                    
+                    // 显示错误消息
+                    addAiMessage('assistant', `抱歉，发生了错误：${error.message}`);
+                    console.error('AI聊天错误:', error);
+                } finally {
+                    // 重新启用输入和按钮
+                    aiChatInput.disabled = false;
+                    aiChatSendBtn.disabled = false;
+                    aiChatInput.focus();
+                }
+            }
+
+            // 绑定发送按钮点击事件
+            if (aiChatSendBtn) {
+                aiChatSendBtn.addEventListener('click', sendAiMessage);
+            }
+
+            // 绑定回车键发送
+            if (aiChatInput) {
+                aiChatInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendAiMessage();
+                    }
+                });
+            }
+
+            // 页面加载时，如果当前在AI聊天屏幕，加载历史记录
+            if (document.getElementById('ai-chat-screen')?.classList.contains('active')) {
+                loadAiChatHistory();
+            }
+            
+            // 将函数暴露到全局，以便在switchScreen中调用
+            window.loadAiChatHistory = loadAiChatHistory;
+            window.clearAiChatHistory = clearAiChatHistory;
+
+            // 清空聊天记录按钮事件
+            const clearAiChatBtn = document.getElementById('clear-ai-chat-btn');
+            const clearAiChatModal = document.getElementById('clear-ai-chat-modal');
+            const cancelClearBtn = document.getElementById('cancel-clear-ai-chat-btn');
+            const confirmClearBtn = document.getElementById('confirm-clear-ai-chat-btn');
+
+            if (clearAiChatBtn) {
+                clearAiChatBtn.addEventListener('click', () => {
+                    if (clearAiChatModal) {
+                        clearAiChatModal.classList.add('visible');
+                    }
+                });
+            }
+
+            if (cancelClearBtn) {
+                cancelClearBtn.addEventListener('click', () => {
+                    if (clearAiChatModal) {
+                        clearAiChatModal.classList.remove('visible');
+                    }
+                });
+            }
+
+            if (confirmClearBtn) {
+                confirmClearBtn.addEventListener('click', async () => {
+                    await clearAiChatHistory();
+                    if (clearAiChatModal) {
+                        clearAiChatModal.classList.remove('visible');
+                    }
+                });
+            }
+
+            // 点击弹窗背景关闭
+            if (clearAiChatModal) {
+                clearAiChatModal.addEventListener('click', (e) => {
+                    if (e.target === clearAiChatModal) {
+                        clearAiChatModal.classList.remove('visible');
+                    }
+                });
+            }
 // --- 一次性将用户日记数据迁移到全局 ---
 if (db.characters.some(c => c.userDiaries && c.userDiaries.length > 0)) {
     if (!db.userDiaries) db.userDiaries = [];
@@ -13345,6 +13809,7 @@ homeScreen1.innerHTML = `
             <div class="right-column">
                 <div class="small-app-grid">
                     <a href="#" class="app-icon" data-target="chat-list-screen"><img src="${getIcon('chat-list-screen')}" alt="404" class="icon-img"><span class="app-name">${defaultIcons['chat-list-screen'].name}</span></a>
+                    <a href="#" class="app-icon" data-target="ai-chat-screen"><img src="${getIcon('ai-chat-screen')}" alt="AI聊天" class="icon-img"><span class="app-name">${defaultIcons['ai-chat-screen'].name}</span></a>
                     <a href="#" class="app-icon" data-target="api-settings-screen"><img src="${getIcon('api-settings-screen')}" alt="API" class="icon-img"><span class="app-name">${defaultIcons['api-settings-screen'].name}</span></a>
                     <a href="#" class="app-icon" data-target="world-book-screen"><img src="${getIcon('world-book-screen')}" alt="世界书" class="icon-img"><span class="app-name">${defaultIcons['world-book-screen'].name}</span></a>
                     <a href="#" class="app-icon" data-target="tutorial-screen"><img src="${getIcon('tutorial-screen')}" alt="教程" class="icon-img"><span class="app-name">${defaultIcons['tutorial-screen'].name}</span></a>
