@@ -32,6 +32,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
         /* --- 全局与主题样式 --- */
@@ -5825,6 +5826,7 @@ html, body {
     <div class="function-item" data-action="memories"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M20,2H8A2,2 0 0,0 6,4V16A2,2 0 0,0 8,18H20A2,2 0 0,0 22,16V4A2,2 0 0,0 20,2M20,16H8V4H20M4,6H2V20A2,2 0 0,0 4,22H18V20H4M12,6L11.2,6.8L9,9L10.2,10.2L11,9.4V14H13V9.4L13.8,10.2L15,9L12.8,6.8L12,6Z"></path></svg></div><span>回忆</span></div>
     
     <div class="function-item" data-action="diary"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M14 17H7V15H14V17M17 13H7V11H17V13M17 9H7V7H17V9Z"></path></svg></div><span>日记</span></div>
+    <div class="function-item" data-action="logs"><div class="icon-bg"><svg viewBox="0 0 24 24"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"></path></svg></div><span>日志</span></div>
 </div>
 </div>
 <!-- ▲▲▲ 替换结束 ▲▲▲ -->
@@ -7109,6 +7111,39 @@ html, body {
     </main>
     <!-- 这个屏幕是只读的，所以没有输入框 -->
 </div>
+
+<!-- 日志系统页面 -->
+<div id="logs-screen" class="screen">
+    <header class="app-header">
+        <button class="back-btn" data-target="home-container">‹</button>
+        <div class="title-container">
+            <h1 class="title">日志系统</h1>
+        </div>
+        <div class="placeholder"></div>
+    </header>
+    <main class="content" style="padding: 20px;">
+        <div class="logs-stats-container" style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <h3 style="margin-top: 0; color: var(--primary-color);">日志统计</h3>
+            <div id="logs-stats" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                <!-- 统计信息将由JS动态生成 -->
+            </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <button id="export-logs-btn" class="btn btn-primary" style="width: 100%;">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px; vertical-align: middle;">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"></path>
+                </svg>
+                导出日志
+            </button>
+            <button id="clear-logs-btn" class="btn btn-secondary" style="width: 100%;">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px; vertical-align: middle;">
+                    <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"></path>
+                </svg>
+                清空日志
+            </button>
+        </div>
+    </main>
+</div>
 <!-- ▲▲▲ 新代码粘贴到这里结束 ▲▲▲ -->
 <!-- === Modal 结束 === -->
 <div id="voice-call-overlay">
@@ -7240,7 +7275,22 @@ const showToast = (message) => {
         async function callAiApi(messages) {
     const { provider, url, key, model } = db.apiSettings;
     if (!url || !key || !model) {
-        throw new Error('API设置不完整');
+        const error = new Error('API设置不完整');
+        if (window.logger) {
+            window.logger.error('api', 'API调用失败：设置不完整', { provider, url: url ? '已设置' : '未设置', model });
+        }
+        throw error;
+    }
+    
+    // 记录API调用开始
+    const apiCallStartTime = Date.now();
+    if (window.logger) {
+        window.logger.debug('api', '开始API调用', {
+            provider,
+            model,
+            messageCount: messages.length,
+            endpoint: url
+        });
     }
 
     let endpoint = url;
@@ -7272,7 +7322,20 @@ const showToast = (message) => {
 
     if (!response.ok) {
         const errorText = await response.text();
-        console.error("API Error Response:", errorText);
+        const duration = Date.now() - apiCallStartTime;
+        logError("API Error Response:", errorText);
+        
+        // 记录API调用错误
+        if (window.logger) {
+            window.logger.error('api', `API调用失败: ${response.status}`, {
+                provider,
+                model,
+                status: response.status,
+                duration: `${duration}ms`,
+                errorPreview: errorText.substring(0, 200)
+            });
+        }
+        
         // 如果返回的是HTML错误页面，给出更清晰的提示
         if (errorText.trim().startsWith('<')) {
             throw new Error(`API返回了一个错误页面(HTML)，而不是JSON数据。`);
@@ -7281,28 +7344,72 @@ const showToast = (message) => {
     }
 
     const data = await response.json();
+    const duration = Date.now() - apiCallStartTime;
 
     // 根据不同服务商解析最终的文本内容
     if (provider === 'gemini') {
         if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
-            return data.candidates[0].content.parts[0].text;
+            const result = data.candidates[0].content.parts[0].text;
+            // 记录API调用成功
+            if (window.logger) {
+                window.logger.info('api', 'API调用成功', {
+                    provider,
+                    model,
+                    duration: `${duration}ms`,
+                    responseLength: result.length
+                });
+            }
+            return result;
         }
    } else { // OpenAI, DeepSeek, Claude, NewAPI 等兼容格式
     if (data.choices && data.choices.length > 0 && data.choices[0].message) {
         // 确保 choices 数组不是空的
-        return data.choices[0].message.content;
+        const result = data.choices[0].message.content;
+        // 记录API调用成功
+        if (window.logger) {
+            window.logger.info('api', 'API调用成功', {
+                provider,
+                model,
+                duration: `${duration}ms`,
+                responseLength: result.length
+            });
+        }
+        return result;
     } else {
         // 如果 choices 数组是空的, 抛出一个更明确的错误
         const finishReason = data.choices && data.choices.length > 0 ? data.choices[0].finish_reason : 'unknown';
-        if (finishReason === 'content_filter') {
-            throw new Error("内容触发了API的安全审核被拦截。");
+        const errorMsg = finishReason === 'content_filter' 
+            ? "内容触发了API的安全审核被拦截。"
+            : "API返回了空结果，请检查模型或提示词。";
+        
+        // 记录API解析错误
+        if (window.logger) {
+            window.logger.warn('api', 'API返回空结果', {
+                provider,
+                model,
+                finishReason,
+                duration: `${duration}ms`
+            });
         }
-        throw new Error("API返回了空结果，请检查模型或提示词。");
+        
+        if (finishReason === 'content_filter') {
+            throw new Error(errorMsg);
+        }
+        throw new Error(errorMsg);
     }
 }
     
     // 如果上面的路径都找不到，抛出错误
-    throw new Error('未能从API响应中解析出有效的文本内容。');
+    const parseError = new Error('未能从API响应中解析出有效的文本内容。');
+    if (window.logger) {
+        window.logger.error('api', 'API响应解析失败', {
+            provider,
+            model,
+            duration: `${duration}ms`,
+            responseKeys: Object.keys(data)
+        });
+    }
+    throw parseError;
 }
 // ▲▲▲ 替换结束 ▲▲▲
 const MAX_HISTORY_PER_CHAT = 400; // 定义每个聊天最多保留200条消息，您可以根据需要调整这个数字
@@ -7520,6 +7627,7 @@ const defaultIcons = {
             'ai-space-music': { name: '音乐', icon: 'https://i.postimg.cc/d10J4VzR/image.png' },
             'ai-space-phone': { name: '电话', icon: 'https://i.postimg.cc/W35G2FzW/phone.png' },
             'ai-chat-screen': {name: 'AI聊天', url: 'https://i.postimg.cc/50FqT8GL/chan-125.png'},
+            'logs-screen': {name: '日志', url: 'https://i.postimg.cc/50FqT8GL/chan-125.png'},
         };
 
         let db = {
@@ -7740,6 +7848,9 @@ const locationBtn = document.getElementById('location-btn'),
                 this.db.version(3).stores({
                     aiChatHistory: 'id, role, content, timestamp' // AI聊天历史记录
                 });
+                this.db.version(4).stores({
+                    logs: 'id, date, level, category, message, data, timestamp' // 日志记录表
+                });
 
                 this.cache = new Map();
                 this.maxCacheSize = 50;
@@ -7803,7 +7914,7 @@ const locationBtn = document.getElementById('location-btn'),
                     console.log(`数据已保存: ${key}`);
                     return true;
                 } catch (error) {
-                    console.error('保存数据失败:', error);
+                    logError('data-storage', '保存数据失败', error, { key });
                     return false;
                 }
             }
@@ -7828,7 +7939,7 @@ const locationBtn = document.getElementById('location-btn'),
                         return null;
                     }
                 } catch (error) {
-                    console.error('获取数据失败:', error);
+                    logError('data-storage', '获取数据失败', error, { key });
                     return null;
                 }
             }
@@ -7877,7 +7988,7 @@ const locationBtn = document.getElementById('location-btn'),
                     console.log(`消息已分块保存: ${chatId} (${chunks.length}个分块)`);
                     return true;
                 } catch (error) {
-                    console.error('保存消息失败:', error);
+                    logError('data-storage', '保存消息失败', error, { chatId, chatType });
                     return false;
                 }
             }
@@ -7926,7 +8037,7 @@ const locationBtn = document.getElementById('location-btn'),
 
                     return allMessages;
                 } catch (error) {
-                    console.error('获取消息失败:', error);
+                    logError('data-storage', '获取消息失败', error, { chatId, chatType });
                     return [];
                 }
             }
@@ -7968,7 +8079,7 @@ const locationBtn = document.getElementById('location-btn'),
                     console.log(`消息已增量添加: ${chatId}`);
                     return true;
                 } catch (error) {
-                    console.error('增量添加消息失败:', error);
+                    logError('data-storage', '增量添加消息失败', error, { chatId, chatType });
                     return false;
                 }
             }
@@ -8004,7 +8115,7 @@ const locationBtn = document.getElementById('location-btn'),
                     console.warn(`删除失败: 未找到消息 ${messageId}`);
                     return false;
                 } catch (error) {
-                    console.error('删除消息失败:', error);
+                    logError('data-storage', '删除消息失败', error, { chatId, chatType });
                     return false;
                 }
             }
@@ -8036,7 +8147,7 @@ const locationBtn = document.getElementById('location-btn'),
                     console.warn(`更新失败: 未找到消息 ${messageId}`);
                     return false;
                 } catch (error) {
-                    console.error('更新消息失败:', error);
+                    logError('data-storage', '更新消息失败', error, { chatId, chatType, messageId });
                     return false;
                 }
             }
@@ -8054,7 +8165,7 @@ const locationBtn = document.getElementById('location-btn'),
 
                     return true;
                 } catch (error) {
-                    console.error('清空消息失败:', error);
+                    logError('清空消息失败:', error);
 
                     return false;
                 }
@@ -8070,7 +8181,7 @@ const locationBtn = document.getElementById('location-btn'),
 
                     return true;
                 } catch (error) {
-                    console.error('删除数据失败:', error);
+                    logError('删除数据失败:', error);
 
                     return false;
                 }
@@ -8088,7 +8199,7 @@ const locationBtn = document.getElementById('location-btn'),
 
                     return true;
                 } catch (error) {
-                    console.error('清空数据失败:', error);
+                    logError('清空数据失败:', error);
 
                     return false;
                 }
@@ -8100,7 +8211,7 @@ const locationBtn = document.getElementById('location-btn'),
                     const storageItems = await this.db.storage.toArray();
                     return storageItems.map(item => item.key);
                 } catch (error) {
-                    console.error('获取所有键失败:', error);
+                    logError('data-storage', '获取所有键失败', error);
                     return [];
                 }
             }
@@ -8137,7 +8248,7 @@ const locationBtn = document.getElementById('location-btn'),
 
                     return info;
                 } catch (error) {
-                    console.error('获取存储信息失败:', error);
+                    logError('获取存储信息失败:', error);
 
                     return null;
                 }
@@ -8165,7 +8276,7 @@ const locationBtn = document.getElementById('location-btn'),
                     await this.db.image_storage.put({ id: id, data: dataUrl });
                     return true;
                 } catch (error) {
-                    console.error('保存图片到仓库失败:', error);
+                    logError('data-storage', '保存图片到仓库失败', error, { id });
                     return false;
                 }
             }
@@ -8176,7 +8287,7 @@ const locationBtn = document.getElementById('location-btn'),
                     const imageRecord = await this.db.image_storage.get(id);
                     return imageRecord ? imageRecord.data : null;
                 } catch (error) {
-                    console.error('从仓库读取图片失败:', error);
+                    logError('data-storage', '从仓库读取图片失败', error, { id });
                     return null;
                 }
             }
@@ -8266,7 +8377,7 @@ const locationBtn = document.getElementById('location-btn'),
                         await this.db.metadata.put({ key: 'migration_v2_complete', value: true });
                         migrationSuccess = true;
                     } else {
-                        console.error('数据迁移过程中发生错误:', error);
+                        logError('data-migration', '数据迁移过程中发生错误', error);
                     }
                 } finally {
                     // --- 核心修复③：更强力的清理逻辑 ---
@@ -8280,7 +8391,7 @@ const locationBtn = document.getElementById('location-btn'),
                             await Dexie.delete('章鱼喷墨机DB');
                             console.log('旧数据库已成功删除。');
                         } catch (deleteError) {
-                            console.error('删除旧数据库失败，但这不影响应用运行:', deleteError);
+                            logError('data-migration', '删除旧数据库失败，但这不影响应用运行', deleteError);
                         }
                     }
                     console.log(`迁移与清理操作完成，耗时: ${Date.now() - startTime}ms`);
@@ -8292,6 +8403,8 @@ const locationBtn = document.getElementById('location-btn'),
         }
 
         const dataStorage = new OptimizedDataStorage();
+        // 暴露到全局，方便Logger等模块访问
+        window.dataStorage = dataStorage;
 
         // 兼容性适配器 - 保持原有API接口
 // ▼▼▼ 请用这个全新的、完整的、无任何省略的 saveData 函数，替换掉文件中旧的同名函数 ▼▼▼
@@ -8360,7 +8473,7 @@ const locationBtn = document.getElementById('location-btn'),
                 return Promise.resolve();
 
             } catch (error) {
-                console.error("在 saveData 期间发生严重错误:", error);
+                logError('data-save', '在 saveData 期间发生严重错误', error);
                 // 向用户显示一个更明确的错误提示
                 if (typeof showToast === 'function') {
                     showToast('严重错误：数据保存失败，请检查控制台！');
@@ -8638,7 +8751,7 @@ const myStickers = localStorage.getItem('pendingAction_updateMyStickers');
                 if (worldBooksUpdated) {
                     await dataStorage.saveData('worldBooks_data', worldBooks);
                 }
-            } catch(e) { console.error("恢复localStorage事务(阶段一)失败:", e); }
+            } catch(e) { logError('data-recovery', '恢复localStorage事务(阶段一)失败', e); }
             
             // 阶段二：加载核心数据
             let loadedBaseData = await dataStorage.getData('章鱼喷墨机');
@@ -8818,11 +8931,21 @@ ensureDataIntegrity(db);
         };
 // ▲▲▲ 替换结束 ▲▲▲
         const switchScreen = (targetId) => {
+            const previousScreen = document.querySelector('.screen.active')?.id || 'none';
             screens.forEach(screen => screen.classList.remove('active'));
             document.getElementById(targetId)?.classList.add('active');
             // Close all overlays and sidebars
             const overlays = document.querySelectorAll('.modal-overlay, .action-sheet-overlay, .settings-sidebar');
             overlays.forEach(o => o.classList.remove('visible', 'open'));
+            
+            // 记录页面切换日志
+            if (window.logger && targetId !== previousScreen) {
+                window.logger.debug('navigation', `页面切换: ${previousScreen} -> ${targetId}`, {
+                    from: previousScreen,
+                    to: targetId,
+                    timestamp: Date.now()
+                });
+            }
             
             // 如果切换到AI聊天屏幕，加载历史记录
             if (targetId === 'ai-chat-screen' && typeof window.loadAiChatHistory === 'function') {
@@ -9035,7 +9158,7 @@ async function addTransaction(type, amount, description) {
         }
     } catch (error) {
         showToast('交易记录保存失败');
-        console.error("保存交易记录失败:", error);
+        logError('wallet', '保存交易记录失败', error);
     }
     // --- “救生艇”改造结束 ---
 }
@@ -9231,7 +9354,7 @@ settingsBtn.addEventListener('click', () => {
                 balanceDisplay.textContent = db.wallet.balance.toFixed(2);
             } catch (error) {
                 showToast('支付设置保存失败');
-                console.error("保存支付设置失败:", error);
+                logError('wallet', '保存支付设置失败', error);
             }
         });
 // ▲▲▲ 替换结束 ▲▲▲
@@ -9376,7 +9499,7 @@ function setupBatchStickerUpload() {
 
         } catch (error) {
             showToast('批量保存表情包失败，请刷新重试');
-            console.error("批量保存表情包失败:", error);
+            logError('sticker', '批量保存表情包失败', error);
             // 可以在这里添加回滚逻辑，但由于影响不大，暂时省略
         }
         // --- “救生艇”改造结束 ---
@@ -9581,7 +9704,7 @@ function setupPomodoroFeature() {
                 const customSound = new Audio(settings.soundUrl);
                 customSound.play();
             } catch(e) {
-                console.error("无法播放自定义声音:", e);
+                logError('audio', '无法播放自定义声音', e);
                 showToast("提示音链接无效");
             }
         }
@@ -9773,7 +9896,7 @@ function setupContinueWritingFeature() {
                     console.log(`主存储成功，已清理 localStorage 的重Roll备份`);
 
                 } catch (error) {
-                    console.error("重Roll操作时发生严重错误:", error);
+                    logError('chat', '重Roll操作时发生严重错误', error);
                     showToast('操作失败，请刷新页面后重试');
                     return; // 发生错误时，不继续执行
                 }
@@ -10031,7 +10154,7 @@ function handleJsonImport(file) {
             const defaultAvatar = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
             createCharacterFromCard(cardData, defaultAvatar);
         } catch (error) {
-            console.error("JSON 解析失败:", error);
+            logError("JSON 解析失败:", error);
             showToast(`导入失败: ${error.message}`);
         }
     };
@@ -10093,7 +10216,7 @@ function handlePngImport(file) {
 
                 createCharacterFromCard(cardData, avatarUrl);
             } catch (error) {
-                console.error("PNG 数据提取或解析失败:", error);
+                logError("PNG 数据提取或解析失败:", error);
                 showToast(`导入失败: ${error.message}`);
             }
         };
@@ -10222,7 +10345,7 @@ function handlePngImport(file) {
                 localStorage.removeItem(bufferKey);
 
             } catch (error) {
-                console.error("导入角色时发生严重错误:", error);
+                logError('import', '导入角色时发生严重错误', error);
                 showToast('导入失败，请检查控制台并刷新重试');
                 // 回滚内存更改
                 db.characters = db.characters.filter(c => c.id !== newChar.id);
@@ -10259,13 +10382,24 @@ if (!db.userDiaries) {
             try {
                 await runOneTimeImageMigration();
             } catch(e) {
-                console.error("在init中执行图片迁移时捕获到未知错误:", e);
+                logError('data-migration', '在init中执行图片迁移时捕获到未知错误', e);
                 // 即使迁移失败，也尝试继续运行应用
             }
             // ▲▲▲ 粘贴结束 ▲▲▲
             applyLayoutPreference();
            applyGlobalCss(db.globalCustomCss);
             window.db = db;
+            
+            // 初始化Logger并记录应用启动
+            if (typeof initLogger === 'function') {
+                initLogger();
+                if (window.logger) {
+                    window.logger.info('app', '应用启动', { 
+                        timestamp: new Date().toISOString(),
+                        userAgent: navigator.userAgent 
+                    });
+                }
+            }
 
             // ▼▼▼ 核心修改点：在这里添加初始化逻辑 ▼▼▼
             if (!db.customWidgets || !Array.isArray(db.customWidgets) || db.customWidgets.length === 0) {
@@ -10321,7 +10455,7 @@ if (!db.userDiaries) {
                         timestamp: Date.now()
                     });
                 } catch (error) {
-                    console.error('保存AI聊天记录失败:', error);
+                    logError('ai-chat', '保存AI聊天记录失败', error);
                 }
             }
 
@@ -10346,7 +10480,7 @@ if (!db.userDiaries) {
                         }
                     }
                 } catch (error) {
-                    console.error('加载AI聊天记录失败:', error);
+                    logError('ai-chat', '加载AI聊天记录失败', error);
                 }
             }
 
@@ -10360,7 +10494,7 @@ if (!db.userDiaries) {
                     }
                     showToast('聊天记录已清空');
                 } catch (error) {
-                    console.error('清空AI聊天记录失败:', error);
+                    logError('ai-chat', '清空AI聊天记录失败', error);
                     showToast('清空聊天记录失败');
                 }
             }
@@ -10481,7 +10615,7 @@ if (!db.userDiaries) {
                     
                     // 显示错误消息
                     addAiMessage('assistant', `抱歉，发生了错误：${error.message}`);
-                    console.error('AI聊天错误:', error);
+                    logError('AI聊天错误:', error);
                 } finally {
                     // 重新启用输入和按钮
                     aiChatInput.disabled = false;
@@ -10883,7 +11017,7 @@ function renderPaymentConfirmationScreen(items) {
 
                                 } catch (error) {
                                     showToast('删除失败，请刷新重试');
-                                    console.error("删除付款记录失败:", error);
+                                    logError("删除付款记录失败:", error);
                                 }
                                 // --- “救生艇”改造结束 ---
                             }
@@ -10968,7 +11102,7 @@ async function handleMallSearch(query) {
             renderMallProducts(fictionalProducts);
             showToast(`为您创造了 ${fictionalProducts.length} 件新商品！`);
         } catch (error) {
-            console.error("创造虚构商品失败:", error);
+            logError("创造虚构商品失败:", error);
             showToast(`创造失败: ${error.message}`);
             document.getElementById('product-grid').innerHTML = `<p class="placeholder-text" style="color:red;">哎呀，创造力枯竭了...</p>`;
         }
@@ -11248,7 +11382,7 @@ if (!db.mallData.customProducts) {
 
                 } catch (error) {
                     showToast('删除失败，请刷新重试');
-                    console.error("删除购物车商品失败:", error);
+                    logError("删除购物车商品失败:", error);
                 }
             }
         });
@@ -11853,7 +11987,7 @@ async function generateAndRenderProducts(append = false) {
         }
         scheduleSaveData();
     } catch (error) {
-        console.error("生成商品失败:", error);
+        logError("生成商品失败:", error);
         if (!append && grid) {
             grid.innerHTML = `<p class="placeholder-text" style="color:red;">商品加载失败: ${error.message}</p>`;
         }
@@ -12013,7 +12147,7 @@ async function generateAndRenderComments(productId) {
                 updateLikeButtonState(productId);
             } catch (error) {
                 showToast('操作失败');
-                console.error("点赞操作失败:", error);
+                logError("点赞操作失败:", error);
                 // 这里可以添加回滚逻辑，但由于是简单切换，影响不大
             }
         }
@@ -12138,7 +12272,7 @@ function handleLikesCheckout() {
                 }
             } catch (error) {
                 showToast('加入购物车失败');
-                console.error("加入购物车失败:", error);
+                logError("加入购物车失败:", error);
                 // 回滚内存
                 db.mallData.cart = db.mallData.cart.filter(item => item.cartId !== newItem.cartId);
             }
@@ -12494,7 +12628,7 @@ function setupWorldBookCategorySystem() {
 
         } catch (error) {
             showToast('创建分类失败，请刷新重试');
-            console.error("创建世界书分类失败:", error);
+            logError("创建世界书分类失败:", error);
             // 如果保存失败，从内存中移除刚刚添加的分类，进行回滚
             db.worldBookCategories = db.worldBookCategories.filter(cat => cat.id !== newCategory.id);
         }
@@ -12571,7 +12705,7 @@ function setupWorldBookCategorySystem() {
 
                                 } catch (error) {
                                     showToast('删除失败，请刷新重试');
-                                    console.error("删除世界书分类失败:", error);
+                                    logError("删除世界书分类失败:", error);
                                 }
                             }
                         }
@@ -12698,7 +12832,7 @@ editWorldBookForm.onsubmit = async function(e) {
                 console.log(`主存储成功，已清理 localStorage 的世界书备份: ${bookData.name}`);
 
             } catch (error) {
-                console.error("保存世界书时发生严重错误:", error);
+                logError("保存世界书时发生严重错误:", error);
                 showToast('保存失败，请检查控制台');
                 // 回滚内存更改
                 if (!isEditing) {
@@ -13375,7 +13509,7 @@ function setupRendererApp() {
             localStorage.removeItem(bufferKey);
         } catch (error) {
             showToast('渲染器数据保存失败');
-            console.error("保存渲染器数据失败:", error);
+            logError("保存渲染器数据失败:", error);
         }
     };
 // ▲▲▲ 添加结束 ▲▲▲
@@ -13707,7 +13841,7 @@ categoryList.addEventListener('touchmove', () => clearTimeout(longPressTimer));
                 db.renderers.push(newRule);
                 importedCount++;
             } catch (err) {
-                console.error('导入渲染器规则失败:', err);
+                logError('导入渲染器规则失败:', err);
                 showToast(`文件 ${file.name} 导入失败`);
             }
         }
@@ -13813,6 +13947,7 @@ homeScreen1.innerHTML = `
                     <a href="#" class="app-icon" data-target="api-settings-screen"><img src="${getIcon('api-settings-screen')}" alt="API" class="icon-img"><span class="app-name">${defaultIcons['api-settings-screen'].name}</span></a>
                     <a href="#" class="app-icon" data-target="world-book-screen"><img src="${getIcon('world-book-screen')}" alt="世界书" class="icon-img"><span class="app-name">${defaultIcons['world-book-screen'].name}</span></a>
                     <a href="#" class="app-icon" data-target="tutorial-screen"><img src="${getIcon('tutorial-screen')}" alt="教程" class="icon-img"><span class="app-name">${defaultIcons['tutorial-screen'].name}</span></a>
+                    <a href="#" class="app-icon" data-target="logs-screen"><img src="${getIcon('logs-screen')}" alt="日志" class="icon-img"><span class="app-name">${defaultIcons['logs-screen'].name}</span></a>
                 </div>
                 <div id="music-app-widget" class="record-player-widget">
                     <div class="record-sleeve" id="custom-record-sleeve"></div>
@@ -13947,7 +14082,7 @@ function renderCustomizeForm() {
             showToast('图标已更新');
         } catch (error) {
             showToast('图标保存失败');
-            console.error("保存自定义图标失败:", error);
+            logError("保存自定义图标失败:", error);
         }
     };
 // ▲▲▲ 添加结束 ▲▲▲
@@ -14234,7 +14369,7 @@ layoutToggle.addEventListener('change', async (e) => {
                 }, 2000);
 
             } catch (error) {
-                console.error("清除数据失败:", error);
+                logError("清除数据失败:", error);
                 showToast('清除数据时发生错误，请查看控制台。');
             }
         } else {
@@ -14408,7 +14543,7 @@ layoutToggle.addEventListener('change', async (e) => {
                         setTimeout(() => window.location.reload(), 1500);
 
                     } catch (error) {
-                        console.error("导入失败:", error);
+                        logError("导入失败:", error);
                         showToast(`导入或解析文件时发生错误: ${error.message}`);
                     } finally {
                         event.target.value = null;
@@ -14500,7 +14635,7 @@ function handleJsonImport(file) {
             const defaultAvatar = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
             createCharacterFromCard(cardData, defaultAvatar);
         } catch (error) {
-            console.error("JSON 解析失败:", error);
+            logError("JSON 解析失败:", error);
             showToast(`导入失败: ${error.message}`);
         }
     };
@@ -14561,7 +14696,7 @@ function handlePngImport(file) {
 
                 createCharacterFromCard(cardData, avatarUrl);
             } catch (error) {
-                console.error("PNG 数据提取或解析失败:", error);
+                logError("PNG 数据提取或解析失败:", error);
                 showToast(`导入失败: ${error.message}`);
             }
         };
@@ -14787,7 +14922,7 @@ function handlePngImport(file) {
                 showToast('聊天已删除');
 
             } catch (error) {
-                console.error("删除聊天时发生错误:", error);
+                logError("删除聊天时发生错误:", error);
                 showToast('删除失败，请查看控制台');
             }
             // ▲▲▲ 修改结束 ▲▲▲
@@ -15022,7 +15157,7 @@ if (importCardBtn && cardImportInput) {
                     console.log(`主存储成功，已清理 localStorage 的角色备份: ${newChar.remarkName}`);
 
                 } catch (error) {
-                    console.error("创建角色时发生严重错误:", error);
+                    logError("创建角色时发生严重错误:", error);
                     showToast('创建角色失败，请检查控制台');
                     // 如果发生错误，从内存中移除，回滚操作
                     const index = db.characters.findIndex(c => c.id === newChar.id);
@@ -15305,6 +15440,18 @@ case 'diary':
                     showToast('此功能仅在私聊中可用');
                 }
                 break;
+case 'logs':
+                switchScreen('logs-screen');
+                updateLogsStats();
+                // 记录日志功能访问
+                if (window.logger) {
+                    window.logger.info('user-action', '用户访问日志系统', {
+                        source: 'function-panel',
+                        chatId: currentChatId,
+                        chatType: currentChatType
+                    });
+                }
+                break;
             // ▲▲▲ 替换结束 ▲▲▲
     }
 });
@@ -15506,7 +15653,7 @@ function handleMessageLongPress(messageWrapper, x, y) {
                         
                     } catch (error) {
                         showToast('状态更新失败');
-                        console.error("更新角色状态失败:", error);
+                        logError("更新角色状态失败:", error);
                     }
                 }
             }
@@ -15596,7 +15743,7 @@ async function saveAndRefreshAiResponse() {
             renderMessages(false, true);
         } catch (error) {
             showToast('更新失败，请刷新重试');
-            console.error("保存AI回复编辑失败:", error);
+            logError("保存AI回复编辑失败:", error);
         }
         return; // 提前结束
     }
@@ -15634,7 +15781,7 @@ async function saveAndRefreshAiResponse() {
 
     } catch (error) {
         showToast('编辑保存失败，请刷新重试');
-        console.error("保存AI回复编辑失败:", error);
+        logError("保存AI回复编辑失败:", error);
     }
 }
 // ▲▲▲ 替换结束 ▲▲▲
@@ -15873,7 +16020,7 @@ function startMessageEdit(messageId) {
 
                 } catch (error) {
                     showToast('编辑保存失败，请刷新重试');
-                    console.error("保存消息编辑失败:", error);
+                    logError("保存消息编辑失败:", error);
                     // 发生错误时，不更新UI，让恢复逻辑处理
                     modal.classList.remove('visible'); // 仍然关闭弹窗
                     return;
@@ -15983,7 +16130,7 @@ function exitMultiSelectMode() {
                 console.log(`主存储成功，已清理 localStorage 的删除备份`);
 
             } catch (error) {
-                console.error("删除消息时发生严重错误:", error);
+                logError("删除消息时发生严重错误:", error);
                 showToast('删除失败，请刷新页面后重试');
                 // 发生错误时，不更新UI，让用户刷新后由恢复逻辑处理
                 return;
@@ -18638,7 +18785,7 @@ const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role 
         await processStream(response, chat, db.apiSettings.provider);
 
     } catch (error) {
-        console.error('AI回复失败:', error);
+        logError(error);
         showToast(`AI回复失败: ${error.message}`);
     }finally {
     isGenerating = false;
@@ -18702,7 +18849,7 @@ async function processAiCommands(fullResponse, chat, executeCommands = true) {
                         await addMomentToDB(momentObj);
                         momentsWereModified = true;
                     }
-                } catch (e) { console.error("解析或执行发布动态指令失败:", e); }
+                } catch (e) { logError("解析或执行发布动态指令失败:", e); }
             }
         },
         // ... 其他指令处理器 (点赞, 评论等) 保持不变 ...
@@ -18718,7 +18865,7 @@ async function processAiCommands(fullResponse, chat, executeCommands = true) {
                             momentsWereModified = true;
                         }
                     }
-                } catch (e) { console.error("解析或执行点赞指令失败:", e); }
+                } catch (e) { logError("解析或执行点赞指令失败:", e); }
             }
         },
         '评论动态': {
@@ -18733,7 +18880,7 @@ async function processAiCommands(fullResponse, chat, executeCommands = true) {
                             momentsWereModified = true;
                         }
                     }
-                } catch (e) { console.error("解析或执行评论指令失败:", e); }
+                } catch (e) { logError("解析或执行评论指令失败:", e); }
             }
         },
         '回复评论': {
@@ -18748,7 +18895,7 @@ async function processAiCommands(fullResponse, chat, executeCommands = true) {
                             momentsWereModified = true;
                         }
                     }
-                } catch (e) { console.error("解析或执行回复评论指令失败:", e); }
+                } catch (e) { logError("解析或执行回复评论指令失败:", e); }
             }
         }
     };
@@ -18810,7 +18957,7 @@ async function processStream(response, chat, apiType) {
                     }
                     fullResponse += textChunk;
                 } catch (e) {
-                    console.error("Error parsing stream chunk:", e, "Chunk:", data);
+                    logError("Error parsing stream chunk:", e, "Chunk:", data);
                 }
             }
         }
@@ -18862,7 +19009,7 @@ async function processStream(response, chat, apiType) {
                 }, 1500);
 
             } catch (e) {
-                console.error("解析AI撤回指令失败:", e);
+                logError("解析AI撤回指令失败:", e);
             }
             hideTypingIndicator();
             return;
@@ -18910,7 +19057,7 @@ async function processStream(response, chat, apiType) {
                     showToast(`[ ${character.remarkName} 悄悄写下了一段回忆... ]`);
                 }
             } catch (e) {
-                console.error("解析或保存AI回忆失败:", e, memoryMatch[1]);
+                logError("解析或保存AI回忆失败:", e, memoryMatch[1]);
             }
         }
         fullResponse = fullResponse.replace(memoryRegex, '');
@@ -19040,7 +19187,7 @@ async function processStream(response, chat, apiType) {
                         });
                         sendImageForRecognition(compressedUrl);
                     } catch (error) {
-                        console.error('Image compression failed:', error);
+                        logError('Image compression failed:', error);
                         showToast('图片处理失败，请重试');
                     } finally {
                         e.target.value = null;
@@ -19169,7 +19316,7 @@ async function sendSticker(sticker) {
 
                 } catch (error) {
                     showToast('表情包保存失败，请刷新重试');
-                    console.error("保存表情包失败:", error);
+                    logError("保存表情包失败:", error);
                 }
                 // --- “救生艇”改造结束 ---
             });
@@ -19187,7 +19334,7 @@ async function sendSticker(sticker) {
                         stickerUrlInput.value = '';
                         stickerUrlInput.disabled = true;
                     } catch (error) {
-                        console.error('表情包压缩失败:', error);
+                        logError('表情包压缩失败:', error);
                         showToast('表情包压缩失败，请重试');
                     }
                 }
@@ -19246,7 +19393,7 @@ async function sendSticker(sticker) {
 
                         } catch (error) {
                             showToast('删除表情包失败，请刷新重试');
-                            console.error("删除表情包失败:", error);
+                            logError("删除表情包失败:", error);
                         }
                         // --- “救生艇”改造结束 ---
                     }
@@ -19623,7 +19770,7 @@ async function sendSticker(sticker) {
 
                 } catch (error) {
                     showToast('字体保存失败，请刷新重试');
-                    console.error("保存字体失败:", error);
+                    logError("保存字体失败:", error);
                 }
             });
 
@@ -19652,7 +19799,7 @@ async function sendSticker(sticker) {
 
                 } catch (error) {
                     showToast('恢复默认字体失败，请刷新重试');
-                    console.error("恢复默认字体失败:", error);
+                    logError("恢复默认字体失败:", error);
                 }
             });
         }
@@ -19742,7 +19889,7 @@ function setupWorldBookApp() {
             await dataStorage.saveData('worldBooks_data', db.worldBooks);
             localStorage.removeItem(bufferKey);
         } catch (error) {
-            console.error("保存世界书时发生严重错误:", error);
+            logError("保存世界书时发生严重错误:", error);
             showToast('保存失败，请检查控制台');
             if (!isEditing) {
                 db.worldBooks = db.worldBooks.filter(wb => wb.id !== bookId);
@@ -19813,7 +19960,7 @@ function setupWorldBookApp() {
                                 showToast('条目已删除');
                             } catch (error) {
                                 showToast('删除失败，请刷新重试');
-                                console.error("删除世界书条目失败:", error);
+                                logError("删除世界书条目失败:", error);
                             }
                         }
                     }
@@ -19843,7 +19990,7 @@ function setupWorldBookApp() {
                                 showToast(`分类“${categoryData.name}”及其内容已删除`);
                             } catch (error) {
                                 showToast('删除失败，请刷新重试');
-                                console.error("删除世界书分类失败:", error);
+                                logError("删除世界书分类失败:", error);
                             }
                         }
                     }
@@ -19914,7 +20061,7 @@ function setupWorldBookApp() {
                         if (typeof renderWorldBookList === 'function') renderWorldBookList();
                         showToast && showToast('世界书已删除');
                     } catch (err) {
-                        console.error('删除世界书出错', err);
+                        logError('删除世界书出错', err);
                         alert('删除失败，请查看控制台');
                     }
                 });
@@ -19959,7 +20106,7 @@ worldBookListContainer.appendChild(li);
                         throw new Error('无法识别的文件格式');
                     }
                 } catch (err) {
-                    console.error(`处理文件 ${file.name} 失败:`, err);
+                    logError(`处理文件 ${file.name} 失败:`, err);
                     errorFileCount++;
                 }
             }
@@ -19991,7 +20138,7 @@ worldBookListContainer.appendChild(li);
 
                 } catch (error) {
                     showToast('导入数据保存失败，请刷新重试');
-                    console.error("导入世界书失败:", error);
+                    logError("导入世界书失败:", error);
                 }
             }
 
@@ -20240,7 +20387,7 @@ chatSettingsBtn.addEventListener('click', () => {
 
                 } catch (error) {
                     showToast('背景处理或保存失败，请重试');
-                    console.error("更换私聊背景失败:", error);
+                    logError("更换私聊背景失败:", error);
                 }
             });
 // ▲▲▲ 替换结束 ▲▲▲
@@ -20344,7 +20491,7 @@ clearChatHistoryBtn.addEventListener('click', clearHistory);
                     console.log(`主存储成功，已清理 localStorage 的世界书关联备份`);
 
                 } catch (error) {
-                    console.error("关联世界书时发生严重错误:", error);
+                    logError("关联世界书时发生严重错误:", error);
                     showToast('关联失败，请检查控制台');
                     return; // 发生错误时中止后续操作
                 }
@@ -20539,7 +20686,7 @@ async function saveSettingsFromSidebar() {
                 console.log(`主存储成功，已清理 localStorage 的设置备份: ${char.remarkName}`);
 
             } catch (error) {
-                console.error("保存私聊设置时发生严重错误:", error);
+                logError("保存私聊设置时发生严重错误:", error);
                 showToast('设置保存失败，请检查控制台');
                 // 如果发生错误，可以考虑不关闭弹窗，让用户重试
                 return;
@@ -20645,7 +20792,7 @@ function setupApiSettingsApp() {
                     showToast('API设置已保存！');
                 } catch (error) {
                     showToast('API设置保存失败，请检查控制台');
-                    console.error("保存API设置失败:", error);
+                    logError("保存API设置失败:", error);
                 }
             });
 // ▲▲▲ 替换结束 ▲▲▲
@@ -20714,7 +20861,7 @@ function setupApiSettingsApp() {
                     showToast('主页壁纸更换成功！');
                 } catch (error) {
                     showToast('壁纸处理或保存失败，请重试');
-                    console.error("保存主页壁纸失败:", error);
+                    logError("保存主页壁纸失败:", error);
                 }
             });
 
@@ -20737,7 +20884,7 @@ function setupApiSettingsApp() {
                     showToast('第二页壁纸更换成功！');
                 } catch (error) {
                     showToast('壁纸处理或保存失败，请重试');
-                    console.error("保存第二页壁纸失败:", error);
+                    logError("保存第二页壁纸失败:", error);
                 }
             });
 
@@ -20761,7 +20908,7 @@ function setupApiSettingsApp() {
                     showToast('AI手机壁纸更换成功！');
                 } catch (error) {
                     showToast('壁纸处理或保存失败，请重试');
-                    console.error("保存AI手机壁纸失败:", error);
+                    logError("保存AI手机壁纸失败:", error);
                 }
             });
         }
@@ -20864,7 +21011,7 @@ function setupStickerSystem() {
 
                 } catch (error) {
                     showToast('表情包保存失败，请刷新重试');
-                    console.error("保存表情包失败:", error);
+                    logError("保存表情包失败:", error);
                 }
                 // --- “救生艇”改造结束 ---
             });
@@ -20882,7 +21029,7 @@ function setupStickerSystem() {
                         stickerUrlInput.value = '';
                         stickerUrlInput.disabled = true;
                     } catch (error) {
-                        console.error('表情包压缩失败:', error);
+                        logError('表情包压缩失败:', error);
                         showToast('表情包压缩失败，请重试');
                     }
                 }
@@ -20941,7 +21088,7 @@ function setupStickerSystem() {
 
                         } catch (error) {
                             showToast('删除表情包失败，请刷新重试');
-                            console.error("删除表情包失败:", error);
+                            logError("删除表情包失败:", error);
                         }
                         // --- “救生艇”改造结束 ---
                     }
@@ -21029,7 +21176,7 @@ async function generateDiaryEntry(isManual = false) {
         }
 
     } catch (error) {
-        console.error('日记生成失败:', error);
+        logError('日记生成失败:', error);
         showToast(`日记生成失败: ${error.message}`);
     } finally {
         isGenerating = false;
@@ -21089,7 +21236,7 @@ async function saveDiaryEntry(content) {
 
     } catch (error) {
         showToast('日记保存失败，请刷新重试');
-        console.error("保存AI日记失败:", error);
+        logError("保存AI日记失败:", error);
     }
     // --- “救生艇”改造结束 ---
 }
@@ -21349,7 +21496,7 @@ function setupDiarySystem() {
 
         } catch (error) {
             showToast('日记保存失败');
-            console.error("保存我的日记失败:", error);
+            logError("保存我的日记失败:", error);
         }
         // --- “救生艇”改造结束 ---
     }
@@ -21407,7 +21554,7 @@ function setupDiarySystem() {
                    if (!isAuto) showToast(`${peekingAi.remarkName} 留下了悄悄话...`);
 
     } catch (error) {
-        console.error('AI偷看失败:', error);
+        logError('AI偷看失败:', error);
         if (!isAuto) showToast('AI偷看失败: ' + error.message);
     }
 }
@@ -21540,7 +21687,7 @@ function setupDiarySystem() {
 
             } catch (error) {
                 showToast('收藏操作失败');
-                console.error("收藏日记失败:", error);
+                logError("收藏日记失败:", error);
                 // 如果失败，回滚内存中的更改
                 diary.isFavorited = !diary.isFavorited;
             } finally {
@@ -21834,7 +21981,7 @@ function getBadgeClassForTitle(title) {
                     
                 } catch (error) {
                     showToast('群聊背景处理或保存失败，请重试');
-                    console.error("更换群聊背景失败:", error);
+                    logError("更换群聊背景失败:", error);
                 }
             });
 // ▲▲▲ 替换结束 ▲▲▲
@@ -22168,7 +22315,7 @@ async function saveGroupSettingsFromSidebar() {
                 console.log(`主存储成功，已清理 localStorage 的群聊设置备份: ${group.name}`);
 
             } catch (error) {
-                console.error("保存群聊设置时发生严重错误:", error);
+                logError("保存群聊设置时发生严重错误:", error);
                 showToast('设置保存失败，请检查控制台');
                 return;
             }
@@ -23016,7 +23163,7 @@ async function generateSelectedMessagesScreenshot() {
         closeBtn.onclick = closeModal; // 使用 .onclick 避免重复绑定
         
     } catch (error) {
-        console.error("截图失败:", error);
+        logError("截图失败:", error);
         showToast('截图失败，详情请查看控制台');
         // 截图失败也要退出选择模式
         exitScreenshotSelectionMode();
@@ -23371,7 +23518,7 @@ function updateQuantity(amount) {
                 
             } catch (error) {
                 showToast('支付后数据处理失败，请刷新重试');
-                console.error("处理支付后续操作失败:", error);
+                logError("处理支付后续操作失败:", error);
             }
             // --- “救生艇”改造结束 ---
 
@@ -23455,7 +23602,7 @@ function updateQuantity(amount) {
                 }
             } catch (error) {
                 showToast('加入购物车失败');
-                console.error("加入购物车失败:", error);
+                logError("加入购物车失败:", error);
                 // 回滚内存
                 db.mallData.cart = db.mallData.cart.filter(item => item.cartId !== newItem.cartId);
             }
@@ -24137,7 +24284,7 @@ function setupSoulBondApp() {
             await dataStorage.saveData(`character_${character.id}`, character);
             showToast('设置已保存');
         } catch (error) {
-            console.error("保存羁绊设置失败:", error);
+            logError("保存羁绊设置失败:", error);
             showToast('设置保存失败，请查看控制台');
             return;
         }
@@ -24203,7 +24350,7 @@ function setupSoulBondApp() {
             addCustomPhotoModal.classList.remove('visible');
             
         } catch (error) {
-            console.error("保存回忆照片失败:", error);
+            logError("保存回忆照片失败:", error);
             showToast('保存失败，请查看控制台');
         }
         // ▲▲▲ 修复结束 ▲▲▲
@@ -24435,7 +24582,7 @@ function setupWishlistApp() {
             renderWishlist(wishes);
 
         } catch (error) {
-            console.error("生成愿望清单失败:", error);
+            logError("生成愿望清单失败:", error);
             showToast(`生成失败: ${error.message}`);
             wishlistContainer.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -24488,7 +24635,7 @@ function setupWishlistApp() {
             renderWishlist(character.soulBondData.wishlist);
             wishEditorModal.classList.remove('visible');
         } catch (error) {
-            console.error("保存愿望失败:", error);
+            logError("保存愿望失败:", error);
             showToast('保存失败，请查看控制台');
         }
     });
@@ -24709,7 +24856,7 @@ JSON格式示例:
 function setupMomentsEventListeners() {
     const momentsScreen = document.getElementById('moments-screen');
     if (!momentsScreen) {
-        console.error("关键错误：未能找到 #moments-screen 元素。");
+        logError("关键错误：未能找到 #moments-screen 元素。");
         return;
     }
 
@@ -25017,7 +25164,7 @@ function setupTrajectoryAndHeartSoundSystem() {
                 contentEl.textContent = aiResponseText;
 
             } catch (error) {
-                console.error('获取AI心声失败:', error);
+                logError('获取AI心声失败:', error);
                 contentEl.innerHTML = `<div class="placeholder-text" style="color:red;">获取心声失败：${error.message}</div>`;
             }
 
@@ -25040,7 +25187,7 @@ function setupTrajectoryAndHeartSoundSystem() {
                 renderTrajectoryTimeline(trajectoryData, character.remarkName);
 
             } catch (error) {
-                console.error('获取AI轨迹失败:', error);
+                logError('获取AI轨迹失败:', error);
                 timelineEl.innerHTML = `<div class="placeholder-text" style="color:red;">获取轨迹失败：${error.message}</div>`;
             }
         }
@@ -25520,7 +25667,7 @@ function setupForumConfigSystem() {
                 showToast('论坛配置已保存！');
             } catch (error) {
                 showToast('论坛配置保存失败');
-                console.error("保存论坛配置失败:", error);
+                logError("保存论坛配置失败:", error);
             }
         });
 // ▲▲▲ 替换结束 ▲▲▲
@@ -25676,7 +25823,7 @@ scheduleSaveData(); // 立即保存到本地
             renderThreadList(currentBoardId);
 
         } catch (error) {
-            console.error('生成论坛帖子失败:', error);
+            logError('生成论坛帖子失败:', error);
             showToast(`生成帖子失败: ${error.message}`);
         } finally {
             isGenerating = false;
@@ -25723,7 +25870,7 @@ scheduleSaveData(); // 立即保存到本地
             });
             threadContentContainer.innerHTML = `<div class="thread-full-content"><h2>${threadTitle}</h2><p class="author-line">由 ${threadAuthor} 发布</p><div class="main-post-body">${threadData.content}</div></div><hr><div class="comments-section"><h3>评论区</h3>${commentsHTML}</div>`;
         } catch (error) {
-            console.error('生成帖子详情失败:', error);
+            logError('生成帖子详情失败:', error);
             threadContentContainer.innerHTML = `<p class="placeholder-text" style="color:red;">加载帖子详情失败: ${error.message}</p>`;
         }
     });
@@ -25836,7 +25983,7 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
         openChatRoom(currentChatId, currentChatType);
 
     } catch (error) {
-        console.error('分享帖子并获取AI回复失败:', error);
+        logError('分享帖子并获取AI回复失败:', error);
         showToast(`分享失败: ${error.message}`);
     }
 });
@@ -25969,7 +26116,7 @@ const prompt = generateSharePostPrompt(currentPostToShare.title, currentPostToSh
 
             } catch (error) {
                 showToast('回忆自动保存失败，请刷新重试');
-                console.error("自动保存回忆失败:", error);
+                logError("自动保存回忆失败:", error);
             }
             // --- “救生艇”改造结束 ---
         }
@@ -26038,7 +26185,7 @@ function setupCustomWidgetSystem() {
             }
         } catch (error) {
             showToast('组件更新失败');
-            console.error("更新自定义组件失败:", error);
+            logError("更新自定义组件失败:", error);
         }
     });
 
@@ -26112,7 +26259,7 @@ async function summarizeHistory() {
         showToast('回忆总结已完成并保存！');
 
     } catch (error) {
-        console.error('总结回忆失败:', error);
+        logError('总结回忆失败:', error);
         showToast(`总结失败: ${error.message}`);
     } finally {
         isGenerating = false;
@@ -26151,7 +26298,7 @@ async function summarizeHistory() {
                     console.log(`主存储清空成功，已清理 localStorage 的清空标记`);
 
                 } catch (error) {
-                    console.error("清空聊天记录时发生严重错误:", error);
+                    logError("清空聊天记录时发生严重错误:", error);
                     showToast('清空失败，请刷新页面后重试');
                     // 发生错误时，不更新UI，让用户刷新后由恢复逻辑处理
                     return;
@@ -26257,7 +26404,7 @@ function setupMemorySummaryModal() {
 
                 } catch (error) {
                     showToast('个人信息保存失败');
-                    console.error("保存个人信息失败:", error);
+                    logError("保存个人信息失败:", error);
                 }
             };
 
@@ -26543,7 +26690,7 @@ function extractAndParseJson(text) {
     try {
         return JSON.parse(jsonString);
     } catch (e) {
-        console.error("最终JSON解析失败。提取出的字符串为:", jsonString);
+        logError("最终JSON解析失败。提取出的字符串为:", jsonString);
         throw e; 
     }
 }
@@ -26598,7 +26745,7 @@ function setupAiPovApp() {
                 renderAiChatList(character, chatList);
 
             } catch (error) {
-                console.error("生成AI聊天列表失败:", error);
+                logError("生成AI聊天列表失败:", error);
                 showToast(`生成失败: ${error.message}`);
                 document.getElementById('ai-chat-list-container').innerHTML = `<p class="placeholder-text" style="color:red;">生成聊天列表失败。</p>`;
             }
@@ -26665,7 +26812,7 @@ if (character && character.povCache) {
 renderAiPovConversation(currentAiPovData.mainAi, chatInfo, conversation);
 
             } catch(error) {
-                console.error("生成AI对话失败:", error);
+                logError("生成AI对话失败:", error);
                 showToast(`生成失败: ${error.message}`);
                 document.getElementById('ai-message-area').innerHTML = `<p class="placeholder-text" style="color:red;">生成对话失败。</p>`;
             }
@@ -26796,7 +26943,7 @@ function renderAiPovConversation(mainAi, chatInfo, conversationHistory) {
             
             // 【安全修复】增加对 otherChar 是否存在的检查
             if (!otherPartyIsUser && !otherChar) {
-                console.error(`AI POV 错误: 在数据库中找不到 realName 为 "${chatInfo.otherParty.name}" 的角色。`);
+                logError(`AI POV 错误: 在数据库中找不到 realName 为 "${chatInfo.otherParty.name}" 的角色。`);
             }
 
             tempGroup.members.push({
@@ -27005,7 +27152,7 @@ async function generateBackgroundChat(characterA) {
         console.log(`已生成 ${characterA.remarkName} 和 ${characterB.remarkName} 之间的背景对话。`);
 
     } catch (error) {
-        console.error("生成背景对话失败:", error);
+        logError("生成背景对话失败:", error);
     }
 }
 // ===============================================================
@@ -27414,7 +27561,7 @@ async function triggerProactiveMessage(chatObject, type) {
         // --- 修改结束 ---
 
     } catch (error) {
-        console.error(`AI后台回复失败 for ${chatObject.name || chatObject.remarkName}:`, error);
+        logError(`AI后台回复失败 for ${chatObject.name || chatObject.remarkName}:`, error);
         chatObject.history.pop();
     }
 }
@@ -27491,7 +27638,7 @@ async function triggerProactiveMomentInteraction(character) {
             return false;
         }
     } catch (error) {
-        console.error("AI后台动态互动失败:", error);
+        logError("AI后台动态互动失败:", error);
         return false;
     }
 }
@@ -27545,7 +27692,7 @@ function applyAdvancedRenderingRules(rawContent, chatId, messageRole) {
                 hasRendered = true;
             }
         } catch (e) {
-            console.error(`渲染器规则 "${rule.name}" 执行失败:`, e);
+            logError(`渲染器规则 "${rule.name}" 执行失败:`, e);
             if (typeof showToast === 'function') {
                 showToast(`渲染器规则 "${rule.name}" 执行失败: 正则表达式错误。`);
             }
@@ -27749,7 +27896,7 @@ function setupAiBrowserApp() {
 
             renderAiBrowserHistory(historyData);
         } catch (error) {
-            console.error("生成AI浏览记录失败:", error);
+            logError("生成AI浏览记录失败:", error);
             showToast(`生成失败: ${error.message}`);
             list.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -27858,7 +28005,7 @@ function setupAiPhotosApp() {
 
             renderAiPhotos(photosData);
         } catch (error) {
-            console.error("生成AI相册失败:", error);
+            logError("生成AI相册失败:", error);
             showToast(`生成失败: ${error.message}`);
             grid.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -27935,7 +28082,7 @@ function setupAiSignalApp() {
 
             renderAiHeartSignal(signalData);
         } catch (error) {
-            console.error("生成心动讯号失败:", error);
+            logError("生成心动讯号失败:", error);
             showToast(`生成失败: ${error.message}`);
             contentEl.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -28004,7 +28151,7 @@ function setupAiMusicApp() {
 
             renderAiMusicPlaylist(playlistData);
         } catch (error) {
-            console.error("生成AI歌单失败:", error);
+            logError("生成AI歌单失败:", error);
             showToast(`生成失败: ${error.message}`);
             list.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -28107,7 +28254,7 @@ function setupAiShoppingApp() {
 
             renderAiShoppingList(shoppingData);
         } catch (error) {
-            console.error("生成购物记录失败:", error);
+            logError("生成购物记录失败:", error);
             showToast(`生成失败: ${error.message}`);
             list.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -28181,7 +28328,7 @@ function setupAiMemoApp() {
 
             renderAiMemoList(memoData);
         } catch (error) {
-            console.error("生成备忘录失败:", error);
+            logError("生成备忘录失败:", error);
             showToast(`生成失败: ${error.message}`);
             list.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -28256,7 +28403,7 @@ function setupAiWalletApp() {
 
             renderAiWalletTransactions(transactionsData);
         } catch (error) {
-            console.error("生成AI消费记录失败:", error);
+            logError("生成AI消费记录失败:", error);
             showToast(`生成失败: ${error.message}`);
             list.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -28472,7 +28619,7 @@ async function runOneTimeImageMigration() {
         }, 2000);
 
     } catch (error) {
-        console.error("一次性图片数据迁移失败:", error);
+        logError("一次性图片数据迁移失败:", error);
         const overlay = document.querySelector('div[style*="z-index: 9999"]');
         if (overlay) {
             overlay.innerHTML = `<p style="color: red; padding: 20px; text-align: center;">数据优化失败，请联系开发者或尝试清除网站数据后重新导入。<br><br>错误信息: ${error.message}</p>`;
@@ -28513,7 +28660,7 @@ function setupAiMusicApp() {
 
             renderAiMusicPlaylist(playlistData);
         } catch (error) {
-            console.error("生成AI歌单失败:", error);
+            logError("生成AI歌单失败:", error);
             showToast(`生成失败: ${error.message}`);
             list.innerHTML = `<p class="placeholder-text" style="color:red;">生成失败</p>`;
         }
@@ -28650,7 +28797,7 @@ function setupDiaryExchangeApp() {
             showToast('交换日记已收到回复！');
 
         } catch (error) {
-            console.error("交换日记失败:", error);
+            logError("交换日记失败:", error);
             showToast(`发送失败: ${error.message}`);
         } finally {
             submitBtn.disabled = false;
@@ -28905,7 +29052,7 @@ function generateDiaryExchangePrompt(character, userContent, userImage) {
         (window.showToast && showToast('预设已应用到界面（未检测到当前聊天保存入口）')) || console.log('预设已应用到界面');
       }
     } catch(err) {
-      console.error('applyMyPersonaPresetToCurrentChat error', err);
+      logError('applyMyPersonaPresetToCurrentChat error', err);
     }
   }
 
@@ -29104,7 +29251,7 @@ function cancelQuoteReply() {
         try { scheduleSaveData(); } catch(e){ /* ignore */ }
       }
     } catch(e){
-      console.error('applyPresetToCurrentChat error', e);
+      logError('applyPresetToCurrentChat error', e);
     }
   }
 
@@ -29245,7 +29392,7 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
             // 你未来可以在这里添加更多安全的操作，例如 'add-class', 'remove-class' 等
         }
     } catch (e) {
-        console.error("处理小剧场交互时出错:", e);
+        logError("处理小剧场交互时出错:", e);
     }
 }
 // END: 新增 - HTML小剧场安全交互处理函数
@@ -29346,7 +29493,7 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
 
       (window.showToast && showToast('已应用 API 预设')) || console.log('已应用 API 预设');
     } catch(e) {
-      console.error('applyApiPreset error', e);
+      logError('applyApiPreset error', e);
     }
   }
 
@@ -29535,7 +29682,7 @@ window.handleTheaterClick = function(element, action, targetSelector, value) {
         (window.showToast && showToast('预设已应用到界面（未检测到当前聊天保存入口）')) || console.log('预设已应用到界面');
       }
     } catch(err) {
-      console.error('applyMyPersonaPresetToCurrentChat error', err);
+      logError('applyMyPersonaPresetToCurrentChat error', err);
     }
   }
 
@@ -31571,7 +31718,7 @@ input:checked + .slider:before {
                   localStorage.setItem(bufferKey, JSON.stringify(existingBuffer));
                   console.log(`同步备份了 ${messages.length} 条消息到 localStorage`);
               } catch (e) {
-                  console.error("同步备份到 localStorage 失败:", e);
+                  logError("同步备份到 localStorage 失败:", e);
               }
               // --- 修复结束 ---
 
@@ -31585,7 +31732,7 @@ input:checked + .slider:before {
                           console.log(`异步主存储成功: ${chat.name || chat.remarkName}`);
                       })
                       .catch(err => {
-                          console.error(`异步主存储失败: ${err}`);
+                          logError(`异步主存储失败: ${err}`);
                       });
               }
 
@@ -31600,7 +31747,7 @@ input:checked + .slider:before {
               }
 
           } catch (e) {
-              console.error('addMessageToChat error:', e);
+              logError('addMessageToChat error:', e);
           }
       };
       // ▲▲▲ 替换结束 ▲▲▲
@@ -31611,7 +31758,7 @@ input:checked + .slider:before {
           if (opts.persist !== false) window.scheduleSaveData(300);
           if (typeof opts.after === 'function') opts.after();
         } catch (e) {
-          console.error('batchUpdate failed:', e);
+          logError('batchUpdate failed:', e);
         }
       };
     })();
@@ -31661,7 +31808,7 @@ input:checked + .slider:before {
       try{ window.AppDB_Moments = db; }catch(e){}
 
     } catch (e) {
-      console.error('Dexie init failed', e);
+      logError('Dexie init failed', e);
       showToast('本地数据库初始化失败，动态功能受限');
       return;
     }
@@ -31683,7 +31830,7 @@ if (typeof setupMentions === 'function') {
         try {
             setupMentions();
         } catch (e) {
-            console.error("在动态模块中初始化提及功能失败:", e);
+            logError("在动态模块中初始化提及功能失败:", e);
         }
     }
     // 3) 绑定打开/关闭发布模态
@@ -31822,7 +31969,7 @@ postForm.addEventListener('submit', async (ev) => {
     }
     
   } catch (e) {
-    console.error('add moment err', e);
+    logError('add moment err', e);
     if (typeof showToast === 'function') showToast('保存失败: ' + (e && e.message ? e.message : String(e)));
   } finally {
     if (submitBtn) submitBtn.disabled = false;
@@ -31838,7 +31985,7 @@ postForm.addEventListener('submit', async (ev) => {
   const momentsEmpty = document.getElementById('moments-empty');
 
   if (!momentsContainer) {
-      console.error("Fatal Error: #moments-container element not found.");
+      logError("Fatal Error: #moments-container element not found.");
       return;
   }
 
@@ -32103,7 +32250,7 @@ async function saveUserComment(momentId, commentText, replyToCommentId = null, r
         
         renderMomentsSafe();
     } catch (e) {
-        console.error(`Failed to save user comment for moment ${momentId}:`, e);
+        logError(`Failed to save user comment for moment ${momentId}:`, e);
         showToast('评论失败');
     }
 }
@@ -32127,7 +32274,7 @@ async function saveMomentComment(momentId, authorId, commentText) {
             if (typeof renderMoments === 'function') renderMoments();
         }
     } catch (e) {
-        console.error(`Failed to save comment for moment ${momentId}:`, e);
+        logError(`Failed to save comment for moment ${momentId}:`, e);
     }
 }
 
@@ -32144,7 +32291,7 @@ async function saveMomentLike(momentId, authorId) {
             }
         }
     } catch (e) {
-        console.error(`Failed to save like for moment ${momentId}:`, e);
+        logError(`Failed to save like for moment ${momentId}:`, e);
     }
 }
 // --- end 新增 ---
@@ -32175,7 +32322,7 @@ async function saveMomentLike(momentId, authorId) {
         });
         renderMoments();
       } catch (e) {
-        console.error('mark comments err', e);
+        logError('mark comments err', e);
       }
     }
 
@@ -32197,7 +32344,7 @@ async function saveMomentLike(momentId, authorId) {
           phone.appendChild(el);
         });
       } catch (e) {
-        console.error('ensureModalsInPhoneScreen error', e);
+        logError('ensureModalsInPhoneScreen error', e);
       }
     })();
 
@@ -32297,7 +32444,7 @@ async function saveAiReplyToComment(momentId, commentId, replyText, aiAuthorId) 
             }
         }
     } catch (e) {
-        console.error(`Failed to save AI reply for comment ${commentId}:`, e);
+        logError(`Failed to save AI reply for comment ${commentId}:`, e);
     }
 }
       // 位置更新函数：根据 chat-list-screen 的 active 类显示/隐藏
@@ -32400,7 +32547,7 @@ function updateBottomNavVisibilityByActive() {
             aiRaw = await window.sendMessageToModel(prompt);
           }
         } catch (e) {
-          console.error('AI call failed', e);
+          logError('AI call failed', e);
           showToast('AI 请求失败：' + (e.message || e));
           return;
         }
@@ -32658,12 +32805,12 @@ function updateBottomNavVisibilityByActive() {
 
             container.appendChild(div);
           } catch (innerErr) {
-            console.error('[injected patch] render single moment failed', innerErr, m);
+            logError('[injected patch] render single moment failed', innerErr, m);
           }
         });
 
       } catch (err) {
-        console.error('[injected patch] renderMomentsSafe failed', err);
+        logError('[injected patch] renderMomentsSafe failed', err);
         if (container) {
           container.innerHTML = '<div style="color:#b00;padding:12px;border-radius:10px;background:#fff8f8;">加载动态时出错（详情见 Console）</div>';
         }
@@ -32688,7 +32835,7 @@ function updateBottomNavVisibilityByActive() {
     setTimeout(() => { try { window.renderMomentsSafe(); } catch(e) {} }, 300);
 
   } catch (e) {
-    console.error('[injected patch] initialization failed', e);
+    logError('[injected patch] initialization failed', e);
   }
 })();
 </script>
@@ -32944,7 +33091,7 @@ fileInput.addEventListener('change', async (e)=>{
                 applyImage(currentEditTarget, compressedUrl);
             } catch (error) {
                 if(typeof showToast === 'function') showToast('图片处理失败，请重试');
-                console.error('Background image compression failed:', error);
+                logError('Background image compression failed:', error);
             }
         }
     });
@@ -33702,7 +33849,7 @@ fileInput.addEventListener('change', async (e)=>{
             const deleteBtn = document.getElementById('moments-delete-btn');
             
             if (!momentsScreen || !deleteBtn) {
-                console.error("动态删除功能初始化失败：找不到关键HTML元素。");
+                logError("动态删除功能初始化失败：找不到关键HTML元素。");
                 return;
             }
 
@@ -33750,7 +33897,7 @@ fileInput.addEventListener('change', async (e)=>{
                             if (typeof window.renderMomentsSafe === 'function') await window.renderMomentsSafe();
                         } else { throw new Error("数据库功能不可用。"); }
                     } catch (error) {
-                        console.error('删除动态失败:', error);
+                        logError('删除动态失败:', error);
                         if(typeof showToast === 'function') showToast('删除失败: ' + error.message);
                     }
                 }
@@ -35800,7 +35947,7 @@ fileInput.addEventListener('change', async (e)=>{
         }
       }, delay);
     } catch (e) {
-      console.error('scheduleSaveData internal error', e);
+      logError('scheduleSaveData internal error', e);
     }
   };
 
@@ -35903,10 +36050,10 @@ fileInput.addEventListener('change', async (e)=>{
         await window.saveData(); // 调用您文件中已有的全局保存函数
         console.log('数据已成功保存！');
       } else {
-        console.error('错误：找不到核心的 saveData() 函数。');
+        logError('错误：找不到核心的 saveData() 函数。');
       }
     } catch (e) {
-      console.error('在执行 flushSaveData 期间发生错误:', e);
+      logError('在执行 flushSaveData 期间发生错误:', e);
     } finally {
       isSaving = false;
     }
@@ -35984,7 +36131,7 @@ fileInput.addEventListener('change', async (e)=>{
         }
       }, delay);
     } catch (e) {
-      console.error('scheduleSaveData internal error', e);
+      logError('scheduleSaveData internal error', e);
     }
   };
 
@@ -36036,6 +36183,492 @@ fileInput.addEventListener('change', async (e)=>{
   // 小工具：在控制台里可运行 window.flushSaveData() 强制保存
   console.log('已安装可靠保存调度与强制刷新 (scheduleSaveData / flushSaveData)');
 })();
+
+// ===============================================================
+// 日志系统
+// ===============================================================
+
+// 辅助函数：同时输出到logError和logger.error
+function logError(category, message, error, data = null) {
+    logError(message, error);
+    if (window.logger) {
+        window.logger.error(category, message, {
+            error: error?.message || String(error),
+            stack: error?.stack,
+            ...(data || {})
+        });
+    }
+}
+
+class Logger {
+    constructor() {
+        // 延迟获取dataStorage，避免初始化顺序问题
+    }
+
+    // 获取dataStorage实例（延迟获取）
+    getDataStorage() {
+        if (typeof dataStorage !== 'undefined') {
+            return dataStorage;
+        }
+        // 如果dataStorage还未初始化，尝试从全局作用域获取
+        if (typeof window.dataStorage !== 'undefined') {
+            return window.dataStorage;
+        }
+        throw new Error('dataStorage未初始化，请确保在DOMContentLoaded之后使用Logger');
+    }
+
+    // 格式化日期为 YYYY-MM-DD
+    formatDate(date = new Date()) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // 格式化时间为 HH:mm:ss
+    formatTime(date = new Date()) {
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${hours}:${minutes}:${seconds}`;
+    }
+
+    // 记录日志
+    async log(level, category, message, data = null) {
+        try {
+            const now = new Date();
+            const date = this.formatDate(now);
+            const timestamp = now.getTime();
+            
+            const logEntry = {
+                id: `log_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+                date: date,
+                level: level, // 'info', 'warn', 'error', 'debug'
+                category: category || 'general', // 日志分类
+                message: message,
+                data: data ? JSON.stringify(data) : null,
+                timestamp: timestamp
+            };
+
+            await this.getDataStorage().db.logs.add(logEntry);
+            
+            // 控制台输出（开发时使用）
+            const consoleMethod = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
+            console[consoleMethod](`[${this.formatTime(now)}] [${level.toUpperCase()}] [${category}] ${message}`, data || '');
+            
+            return logEntry;
+        } catch (error) {
+            logError('记录日志失败:', error);
+            return null;
+        }
+    }
+
+    // 便捷方法
+    async info(category, message, data) {
+        return this.log('info', category, message, data);
+    }
+
+    async warn(category, message, data) {
+        return this.log('warn', category, message, data);
+    }
+
+    async error(category, message, data) {
+        return this.log('error', category, message, data);
+    }
+
+    async debug(category, message, data) {
+        return this.log('debug', category, message, data);
+    }
+
+    // 获取指定日期的日志
+    async getLogsByDate(date) {
+        try {
+            return await this.getDataStorage().db.logs.where('date').equals(date).toArray();
+        } catch (error) {
+            logError('获取日志失败:', error);
+            return [];
+        }
+    }
+
+    // 获取所有日志
+    async getAllLogs() {
+        try {
+            return await this.getDataStorage().db.logs.toArray();
+        } catch (error) {
+            logError('获取所有日志失败:', error);
+            return [];
+        }
+    }
+
+    // 获取日志统计信息
+    async getStats() {
+        try {
+            const dataStorage = this.getDataStorage();
+            console.log('获取dataStorage成功:', !!dataStorage);
+            console.log('检查logs表是否存在:', !!dataStorage.db.logs);
+            
+            // 先检查表是否存在
+            if (!dataStorage.db.logs) {
+                logError('logs表不存在，数据库可能未升级到version 4');
+                return { total: 0, byLevel: {}, byCategory: {}, byDate: {} };
+            }
+            
+            const allLogs = await dataStorage.db.logs.toArray();
+            console.log('从数据库获取到的日志数量:', allLogs.length);
+            
+            const stats = {
+                total: allLogs.length,
+                byLevel: {},
+                byCategory: {},
+                byDate: {}
+            };
+
+            allLogs.forEach(log => {
+                // 按级别统计
+                stats.byLevel[log.level] = (stats.byLevel[log.level] || 0) + 1;
+                
+                // 按分类统计
+                stats.byCategory[log.category] = (stats.byCategory[log.category] || 0) + 1;
+                
+                // 按日期统计
+                stats.byDate[log.date] = (stats.byDate[log.date] || 0) + 1;
+            });
+
+            console.log('统计结果:', stats);
+            return stats;
+        } catch (error) {
+            logError('获取日志统计失败:', error);
+            logError('错误详情:', error.stack);
+            return { total: 0, byLevel: {}, byCategory: {}, byDate: {} };
+        }
+    }
+
+    // 清理十天前的日志
+    async cleanOldLogs() {
+        try {
+            const dataStorage = this.getDataStorage();
+            if (!dataStorage.db.logs) {
+                return { deleted: 0 };
+            }
+
+            // 计算十天前的日期
+            const tenDaysAgo = new Date();
+            tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+            const cutoffDate = this.formatDate(tenDaysAgo);
+            const cutoffTimestamp = tenDaysAgo.getTime();
+
+            // 获取所有日志
+            const allLogs = await dataStorage.db.logs.toArray();
+            
+            // 找出需要删除的日志（日期早于十天前，或时间戳早于十天前）
+            const logsToDelete = allLogs.filter(log => {
+                // 比较日期字符串（YYYY-MM-DD格式可以直接比较）
+                if (log.date && log.date < cutoffDate) {
+                    return true;
+                }
+                // 如果日期相同，比较时间戳
+                if (log.date === cutoffDate && log.timestamp < cutoffTimestamp) {
+                    return true;
+                }
+                return false;
+            });
+
+            if (logsToDelete.length > 0) {
+                // 批量删除
+                const idsToDelete = logsToDelete.map(log => log.id);
+                await dataStorage.db.logs.bulkDelete(idsToDelete);
+                
+                console.log(`已清理 ${logsToDelete.length} 条十天前的日志`);
+                return { deleted: logsToDelete.length };
+            }
+
+            return { deleted: 0 };
+        } catch (error) {
+            console.error('清理旧日志失败:', error);
+            if (window.logger) {
+                window.logger.error('logs', '清理旧日志失败', {
+                    error: error.message
+                });
+            }
+            return { deleted: 0, error: error.message };
+        }
+    }
+
+    // 清空所有日志
+    async clearAll() {
+        try {
+            const logCount = await this.getDataStorage().db.logs.count();
+            await this.getDataStorage().db.logs.clear();
+            
+            // 记录清空操作（在清空前记录，因为清空后无法记录）
+            if (window.logger) {
+                // 使用setTimeout确保这条日志在清空前记录
+                setTimeout(async () => {
+                    if (window.logger) {
+                        await window.logger.info('logs', '日志已清空', {
+                            clearedCount: logCount
+                        });
+                    }
+                }, 100);
+            }
+            
+            return true;
+        } catch (error) {
+            logError('清空日志失败:', error);
+            if (window.logger) {
+                window.logger.error('logs', '清空日志失败', {
+                    error: error.message
+                });
+            }
+            return false;
+        }
+    }
+
+    // 导出日志（按日期压缩）
+    async exportLogs() {
+        try {
+            const allLogs = await this.getAllLogs();
+            if (allLogs.length === 0) {
+                showToast('没有日志可导出');
+                if (window.logger) {
+                    window.logger.warn('logs', '尝试导出日志但日志为空');
+                }
+                return;
+            }
+            
+            // 记录导出操作
+            if (window.logger) {
+                window.logger.info('logs', '开始导出日志', {
+                    totalLogs: allLogs.length,
+                    dateCount: new Set(allLogs.map(l => l.date)).size
+                });
+            }
+
+            // 按日期分组
+            const logsByDate = {};
+            allLogs.forEach(log => {
+                if (!logsByDate[log.date]) {
+                    logsByDate[log.date] = [];
+                }
+                logsByDate[log.date].push(log);
+            });
+
+            // 创建ZIP文件
+            const zip = new JSZip();
+
+            // 为每个日期创建文件
+            for (const [date, logs] of Object.entries(logsByDate)) {
+                // 按时间排序
+                logs.sort((a, b) => a.timestamp - b.timestamp);
+                
+                // 格式化为文本
+                let content = `日志日期: ${date}\n`;
+                content += `总计: ${logs.length} 条\n`;
+                content += `${'='.repeat(50)}\n\n`;
+
+                logs.forEach(log => {
+                    const time = this.formatTime(new Date(log.timestamp));
+                    content += `[${time}] [${log.level.toUpperCase()}] [${log.category}]\n`;
+                    content += `${log.message}\n`;
+                    if (log.data) {
+                        try {
+                            const dataObj = JSON.parse(log.data);
+                            content += `数据: ${JSON.stringify(dataObj, null, 2)}\n`;
+                        } catch (e) {
+                            content += `数据: ${log.data}\n`;
+                        }
+                    }
+                    content += `${'-'.repeat(50)}\n\n`;
+                });
+
+                zip.file(`${date}.txt`, content);
+            }
+
+            // 生成ZIP文件
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `logs_${this.formatDate()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showToast('日志导出成功');
+            
+            // 记录导出成功
+            if (window.logger) {
+                window.logger.info('logs', '日志导出成功', {
+                    totalLogs: allLogs.length,
+                    fileCount: Object.keys(logsByDate).length
+                });
+            }
+        } catch (error) {
+            logError('导出日志失败:', error);
+            showToast('导出日志失败: ' + error.message);
+            
+            // 记录导出失败
+            if (window.logger) {
+                window.logger.error('logs', '日志导出失败', {
+                    error: error.message,
+                    stack: error.stack
+                });
+            }
+        }
+    }
+}
+
+// 创建全局Logger实例（延迟初始化，确保dataStorage已准备好）
+let logger = null;
+
+// 初始化Logger（在dataStorage准备好后调用）
+function initLogger() {
+    if (!logger && (typeof window.dataStorage !== 'undefined' || typeof dataStorage !== 'undefined')) {
+        logger = new Logger();
+        window.logger = logger;
+    }
+    return logger;
+}
+
+// 如果dataStorage已经可用，立即初始化
+if (typeof window.dataStorage !== 'undefined') {
+    logger = new Logger();
+    window.logger = logger;
+}
+
+// 更新日志统计显示
+async function updateLogsStats() {
+    try {
+        const loggerInstance = logger || initLogger();
+        if (!loggerInstance) {
+            console.warn('Logger未初始化，无法更新统计');
+            return;
+        }
+        
+        // 自动清理十天前的日志
+        const cleanResult = await loggerInstance.cleanOldLogs();
+        if (cleanResult.deleted > 0) {
+            console.log(`已自动清理 ${cleanResult.deleted} 条十天前的日志`);
+        }
+        
+        // 添加调试信息
+        console.log('开始获取日志统计...');
+        const stats = await loggerInstance.getStats();
+        console.log('获取到的统计信息:', stats);
+        
+        const statsContainer = document.getElementById('logs-stats');
+        
+        if (!statsContainer) {
+            console.warn('日志统计容器未找到');
+            return;
+        }
+
+        const levelColors = {
+            info: '#4CAF50',
+            warn: '#FF9800',
+            error: '#F44336',
+            debug: '#2196F3'
+        };
+
+        let html = `
+            <div style="grid-column: 1 / -1; padding: 10px; background: #f5f5f5; border-radius: 8px; margin-bottom: 10px;">
+                <strong>总计: ${stats.total} 条</strong>
+            </div>
+        `;
+
+        // 按级别显示
+        const levels = ['info', 'warn', 'error', 'debug'];
+        levels.forEach(level => {
+            const count = stats.byLevel[level] || 0;
+            if (count > 0) {
+                html += `
+                    <div style="padding: 12px; background: ${levelColors[level]}20; border-radius: 8px; border-left: 4px solid ${levelColors[level]};">
+                        <div style="font-size: 24px; font-weight: bold; color: ${levelColors[level]};">${count}</div>
+                        <div style="font-size: 12px; color: #666; margin-top: 4px;">${level.toUpperCase()}</div>
+                    </div>
+                `;
+            }
+        });
+
+        statsContainer.innerHTML = html;
+    } catch (error) {
+        logError('更新日志统计失败:', error);
+    }
+}
+
+// 绑定日志页面事件
+document.addEventListener('DOMContentLoaded', () => {
+    const exportBtn = document.getElementById('export-logs-btn');
+    const clearBtn = document.getElementById('clear-logs-btn');
+
+    if (exportBtn) {
+        exportBtn.addEventListener('click', async () => {
+            const loggerInstance = logger || initLogger();
+            if (!loggerInstance) {
+                showToast('日志系统未初始化');
+                return;
+            }
+            exportBtn.disabled = true;
+            exportBtn.textContent = '导出中...';
+            await loggerInstance.exportLogs();
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px; vertical-align: middle;">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"></path>
+                </svg>
+                导出日志
+            `;
+        });
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', async () => {
+            const loggerInstance = logger || initLogger();
+            if (!loggerInstance) {
+                showToast('日志系统未初始化');
+                return;
+            }
+            if (confirm('确定要清空所有日志吗？此操作不可恢复。')) {
+                clearBtn.disabled = true;
+                clearBtn.textContent = '清空中...';
+                const success = await loggerInstance.clearAll();
+                if (success) {
+                    showToast('日志已清空');
+                    await updateLogsStats();
+                } else {
+                    showToast('清空日志失败');
+                }
+                clearBtn.disabled = false;
+                clearBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px; vertical-align: middle;">
+                        <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"></path>
+                    </svg>
+                    清空日志
+                `;
+            }
+        });
+    }
+
+    // 当切换到日志页面时更新统计
+    const logsScreen = document.getElementById('logs-screen');
+    if (logsScreen) {
+        const observer = new MutationObserver((mutations) => {
+            if (logsScreen.classList.contains('active')) {
+                updateLogsStats();
+                // 记录访问日志页面
+                if (window.logger) {
+                    window.logger.debug('navigation', '用户访问日志页面');
+                }
+            }
+        });
+        observer.observe(logsScreen, { attributes: true, attributeFilter: ['class'] });
+    }
+    
+});
+
+// Logger初始化函数会在dataStorage准备好后自动调用
+// 在init函数中，dataStorage准备好后调用 initLogger() 来确保Logger可用
 </script>
 <!-- ▼▼▼ 请将这段代码粘贴在 </body> 标签之前 ▼▼▼ -->
 
