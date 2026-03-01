@@ -15443,14 +15443,6 @@ case 'diary':
 case 'logs':
                 switchScreen('logs-screen');
                 updateLogsStats();
-                // 记录日志功能访问
-                if (window.logger) {
-                    window.logger.info('user-action', '用户访问日志系统', {
-                        source: 'function-panel',
-                        chatId: currentChatId,
-                        chatType: currentChatType
-                    });
-                }
                 break;
             // ▲▲▲ 替换结束 ▲▲▲
     }
@@ -36656,10 +36648,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const observer = new MutationObserver((mutations) => {
             if (logsScreen.classList.contains('active')) {
                 updateLogsStats();
-                // 记录访问日志页面
-                if (window.logger) {
-                    window.logger.debug('navigation', '用户访问日志页面');
-                }
             }
         });
         observer.observe(logsScreen, { attributes: true, attributeFilter: ['class'] });
