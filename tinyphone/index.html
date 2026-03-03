@@ -7267,9 +7267,24 @@ html, body {
     }
     const toastElement = document.getElementById('toast-notification');
 const showToast = (message) => {
-            toastElement.textContent = message;
-            toastElement.classList.add('show');
-            setTimeout(() => toastElement.classList.remove('show'), 3000);
+    console.log("【调试信息】showToast:", message); // 添加调试日志
+            if (!toastElement) {
+                log.warn( 'ai-stream', 'showToast: toast-notification元素不存在，使用alert代替');
+                alert(message);
+                return;
+            }
+            try {
+                toastElement.textContent = message;
+                toastElement.classList.add('show');
+                setTimeout(() => toastElement.classList.remove('show'), 3000);
+            } catch (error) {
+                log.error('ai-stream', 'showToast执行失败', {
+                    errorMessage: error.message,
+                    errorStack: error.stack,
+                    toastMessage: message
+                });
+                alert(message); // fallback
+            }
         };
         const pad = (num) => num.toString().padStart(2, '0');
         async function callAiApi(messages) {
@@ -18618,17 +18633,29 @@ prompt += `
                            
 // ▼▼▼ 请用这个【毫无省略】的完整函数，替换掉您文件中旧的同名函数 ▼▼▼
 
-async function getAiReply() {if (currentChatType === 'private') {
-    const character = db.characters.find(c => c.id === currentChatId);
-    if (character && character.isBlockedByAi) {
-        showToast('你已被对方拉黑');
-        return; // 阻止函数继续执行
+async function getAiReply() {
+    log.debug('ai-reply', '开始获取AI回复', {
+        chatType: currentChatType,
+        chatId: currentChatId,
+        isGenerating: isGenerating
+    });
+    
+    if (currentChatType === 'private') {
+        const character = db.characters.find(c => c.id === currentChatId);
+        if (character && character.isBlockedByAi) {
+            log.warn('ai-reply', '用户已被AI拉黑，阻止回复', { chatId: currentChatId });
+            showToast('你已被对方拉黑');
+            return; // 阻止函数继续执行
+        }
     }
-}
-    if (isGenerating) return;
+    if (isGenerating) {
+        log.debug('ai-reply', 'AI正在生成中，跳过本次请求');
+        return;
+    }
     const {url, key, model} = db.apiSettings;
     if (!url || !key || !model) {
-        showToast('请先在“api”应用中完成设置！');
+        log.warn('ai-reply', 'API设置不完整，无法获取回复', { url: !!url, key: !!key, model: !!model });
+        showToast('请先在"api"应用中完成设置！');
         switchScreen('api-settings-screen');
         return;
     }
@@ -18641,7 +18668,17 @@ async function getAiReply() {if (currentChatType === 'private') {
         return
     }
     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-    if (!chat) return;// --- 修改：将“正在输入”提示移到顶部状态栏 ---
+    if (!chat) {
+        log.error('ai-reply', '未找到聊天对象', { chatType: currentChatType, chatId: currentChatId });
+        return;
+    }
+    
+    log.debug('ai-reply', '找到聊天对象，开始准备请求', {
+        chatName: chat.name || chat.remarkName,
+        historyLength: chat.history ? chat.history.length : 0
+    });
+    
+    // --- 修改：将"正在输入"提示移到顶部状态栏 ---
 const subtitle = document.getElementById('chat-room-subtitle');
 const statusTextElement = document.getElementById('chat-room-status-text');
 
@@ -18768,18 +18805,72 @@ const historySlice = chat.history.slice(-chat.maxMemory).filter(msg => msg.role 
             'Content-Type': 'application/json',
             Authorization: `Bearer ${getRandomValue(key)}`
         };
+        log.debug('ai-reply', '发送API请求', {
+            endpoint: endpoint,
+            provider: db.apiSettings.provider,
+            messagesCount: messages.length
+        });
+        
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify(requestBody)
         });
-        if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            log.error('ai-reply', 'API请求失败', {
+                status: response.status,
+                statusText: response.statusText,
+                errorText: errorText.substring(0, 200)
+            });
+            throw new Error(`API Error: ${response.status} ${errorText}`);
+        }
+        
+        log.debug('ai-reply', 'API请求成功，开始处理流式响应', {
+            provider: db.apiSettings.provider
+        });
+        
         await processStream(response, chat, db.apiSettings.provider);
 
     } catch (error) {
+        log.error('ai-reply', 'AI回复过程中发生错误', {
+            errorMessage: error.message,
+            errorStack: error.stack ? error.stack.substring(0, 500) : null
+        });
         logError(error);
-        showToast(`AI回复失败: ${error.message}`);
+        
+        // 尝试显示错误提示
+        try {
+            if (typeof showToast === 'function') {
+                log.debug('ai-reply', '准备调用showToast显示错误提示', {
+                    errorMessage: error.message
+                });
+                showToast(`AI回复失败: ${error.message}`);
+                log.debug('ai-reply', 'showToast调用完成');
+            } else {
+                log.warn('ai-reply', 'showToast函数不存在，使用alert代替', {
+                    errorMessage: error.message
+                });
+                alert(`AI回复失败: ${error.message}`);
+            }
+        } catch (toastError) {
+            log.error('ai-reply', '调用showToast时发生错误', {
+                toastError: toastError.message,
+                originalError: error.message
+            });
+            // 最后的fallback
+            try {
+                alert(`AI回复失败: ${error.message}`);
+            } catch (e) {
+                log.error('ai-reply', '无法显示错误提示', {
+                    alertError: e.message,
+                    originalError: error.message
+                });
+            }
+        }
     }finally {
+        log.debug('ai-reply', 'AI回复流程结束，清理状态');
     isGenerating = false;
     getReplyBtn.disabled = false;
 
@@ -18914,19 +19005,43 @@ async function processAiCommands(fullResponse, chat, executeCommands = true) {
 // ===============================================================
 // ▼▼▼ 请用这个完整的、修正后的新函数，替换掉文件中旧的 processStream 函数 ▼▼▼
 async function processStream(response, chat, apiType) {
+    log.debug('ai-stream', '开始处理流式响应', {
+        apiType: apiType,
+        chatId: chat.id,
+        chatName: chat.name || chat.remarkName
+    });
+    
+    if (!response || !response.body) {
+        const errorMsg = '流式响应无效：response或response.body为空';
+        log.error('ai-stream', errorMsg, {
+            hasResponse: !!response,
+            hasBody: !!(response && response.body)
+        });
+        throw new Error(errorMsg);
+    }
+    
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullResponse = "";
     let accumulatedChunk = "";
     let callActionReceived = false;
     let momentsWereAdded = false; // 【核心修复①】在这里声明变量
+    let chunkCount = 0;
 
     for (;;) {
         const {
             done,
             value
         } = await reader.read();
-        if (done) break;
+        if (done) {
+            log.debug('ai-stream', '流式响应读取完成', {
+                chunkCount: chunkCount,
+                fullResponseLength: fullResponse.length
+            });
+            break;
+        }
+        
+        chunkCount++;
 
         accumulatedChunk += decoder.decode(value, {
             stream: true
@@ -18947,6 +19062,12 @@ async function processStream(response, chat, apiType) {
                     } else { 
                         textChunk = (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) || "";
                     }
+                    if (textChunk && chunkCount % 10 === 0) {
+                        log.debug('ai-stream', '接收到文本块', {
+                            chunkLength: textChunk.length,
+                            accumulatedLength: fullResponse.length
+                        });
+                    }
                     fullResponse += textChunk;
                 } catch (e) {
                     logError("Error parsing stream chunk:", e, "Chunk:", data);
@@ -18956,7 +19077,11 @@ async function processStream(response, chat, apiType) {
     }
 
     if (fullResponse) {
-        console.log("【调试信息】AI完整原始回复:", fullResponse);
+        log.info('ai-stream', 'AI完整原始回复已接收', {
+            responseLength: fullResponse.length,
+            responsePreview: fullResponse.substring(0, 200),
+            fullResponse: fullResponse
+        });
         
         let contentToProcess = fullResponse;
         const responseMatch = fullResponse.match(/<ai_response>([\s\S]*)<\/ai_response>/);
@@ -18965,13 +19090,22 @@ async function processStream(response, chat, apiType) {
         }
 
         // 【核心修复②】接收 processAiCommands 返回的对象
+        log.debug('ai-stream', '开始处理AI指令', {
+            contentLength: contentToProcess.length
+        });
         const processResult = await processAiCommands(contentToProcess, chat);
         contentToProcess = processResult.cleanedResponse;
         momentsWereAdded = processResult.momentsModified; // 将返回的标记赋值给我们的变量
         
+        log.debug('ai-stream', 'AI指令处理完成', {
+            cleanedLength: contentToProcess.length,
+            momentsModified: momentsWereAdded
+        });
+        
         const recallRegex = /\[send_and_recall:({.*?})\]/g;
         const recallMatch = recallRegex.exec(contentToProcess);
         if (recallMatch) {
+            log.info('ai-stream', 'AI发送撤回消息，提前返回', { chatId: chat.id });
             try {
                 const recallData = JSON.parse(recallMatch[1]);
                 const messageToSend = {
@@ -19001,6 +19135,7 @@ async function processStream(response, chat, apiType) {
                 }, 1500);
 
             } catch (e) {
+                log.error('ai-stream', '解析AI撤回指令失败', { error: e.message });
                 logError("解析AI撤回指令失败:", e);
             }
             hideTypingIndicator();
@@ -19008,31 +19143,37 @@ async function processStream(response, chat, apiType) {
         }
         
         if (fullResponse.includes('[call-accept]')) {
+            log.info('ai-stream', 'AI接受通话，提前返回', { chatId: chat.id });
             callActionReceived = true;
             startActiveCall();
             return;
         }
         if (fullResponse.includes('[call-decline]')) {
+            log.info('ai-stream', 'AI拒绝通话，提前返回', { chatId: chat.id });
             callActionReceived = true;
             showToast(`${chat.remarkName} 拒接了你的通话`);
             endCall('declined');
             return;
         }
         if (fullResponse.includes('[hangup]')) {
+            log.info('ai-stream', 'AI挂断通话，提前返回', { chatId: chat.id });
             endCall('ended');
             return;
         }
         if (isVoiceCallActive) {
+            log.debug('ai-stream', '语音通话中，仅追加到转录，提前返回', { chatId: chat.id });
             appendCallTranscript("ai", contentToProcess);
             return;
         }
 
         if (currentChatType === 'private') {
             if (fullResponse.includes('[block-user]')) {
+                log.info('ai-stream', 'AI拉黑用户，提前返回', { chatId: chat.id });
                 activateAiBlock(chat);
                 return;
             }
             if (fullResponse.includes('[unblock-user]')) {
+                log.info('ai-stream', 'AI解除拉黑，提前返回', { chatId: chat.id });
                 deactivateAiBlock(chat);
                 return;
             }
@@ -19090,6 +19231,19 @@ async function processStream(response, chat, apiType) {
         
         const messages = getMixedContent(contentToProcess, chat).filter(item => item.content.trim() !== '');
         
+        log.debug('ai-stream', '准备添加消息到聊天', {
+            messagesCount: messages.length,
+            contentToProcessLength: contentToProcess.length
+        });
+        
+        if (messages.length === 0) {
+            log.warn('ai-stream', '处理后没有可添加的消息', {
+                originalLength: fullResponse.length,
+                contentToProcessLength: contentToProcess.length,
+                contentPreview: contentToProcess.substring(0, 300)
+            });
+        }
+        
         let firstMessageProcessed = false; 
         for (const item of messages) {
             const delay = firstMessageProcessed ? (600 + Math.random() * 600) : (500 + Math.random() * 500);
@@ -19105,6 +19259,13 @@ async function processStream(response, chat, apiType) {
                 rawAiResponse: fullResponse
             };
 
+            log.debug('ai-stream', '添加AI消息', {
+                messageId: message.id,
+                contentLength: message.content.length,
+                contentPreview: message.content.substring(0, 100),
+                chatType: currentChatType
+            });
+
             if (currentChatType === 'private') {
                 const receivedTransferRegex = new RegExp(`\\[${chat.realName}的转账：.*?元；备注：.*?\\]`);
                 const giftRegex = new RegExp(`\\[${chat.realName}送来的礼物：.*?\\]`);
@@ -19112,6 +19273,11 @@ async function processStream(response, chat, apiType) {
                 else if (giftRegex.test(message.content)) message.giftStatus = 'sent';
                 addMessageToChat(chat,message);
                 addMessageBubble(message);
+                
+                log.info('ai-stream', 'AI消息已添加到私聊', {
+                    messageId: message.id,
+                    chatId: chat.id
+                });
             } else { // group
                 const nameMatch = item.content.match(/\[(.*?)(?:的消息|的语音|发送的表情包|发来的照片\/视频)：/);
                 if (nameMatch || item.char) {
@@ -19121,10 +19287,26 @@ async function processStream(response, chat, apiType) {
                         message.senderId = sender.id;
                         addMessageToChat(chat,message);
                         addMessageBubble(message);
+                        
+                        log.info('ai-stream', 'AI消息已添加到群聊', {
+                            messageId: message.id,
+                            chatId: chat.id,
+                            senderId: sender.id
+                        });
+                    } else {
+                        log.warn('ai-stream', '未找到群聊发送者', {
+                            senderName: senderName,
+                            chatId: chat.id
+                        });
                     }
                 }
             }
         }
+        
+        log.info('ai-stream', '所有AI消息处理完成', {
+            messagesAdded: messages.length,
+            chatId: chat.id
+        });
 
         hideTypingIndicator();
 
@@ -19153,6 +19335,10 @@ async function processStream(response, chat, apiType) {
         }
 
     } else {
+        log.warn('ai-stream', 'AI回复为空，没有接收到任何内容', {
+            chatId: chat.id,
+            apiType: apiType
+        });
         hideTypingIndicator();
     }
     
@@ -36180,9 +36366,32 @@ fileInput.addEventListener('change', async (e)=>{
 // 日志系统
 // ===============================================================
 
+// 日志辅助函数：封装日志调用，避免每次都判断 window.logger
+const log = {
+    debug: (category, message, data) => {
+        if (window.logger) {
+            window.logger.debug(category, message, data);
+        }
+    },
+    info: (category, message, data) => {
+        if (window.logger) {
+            window.logger.info(category, message, data);
+        }
+    },
+    warn: (category, message, data) => {
+        if (window.logger) {
+            window.logger.warn(category, message, data);
+        }
+    },
+    error: (category, message, data) => {
+        if (window.logger) {
+            window.logger.error(category, message, data);
+        }
+    }
+};
+
 // 辅助函数：同时输出到logError和logger.error
 function logError(category, message, error, data = null) {
-    logError(message, error);
     if (window.logger) {
         window.logger.error(category, message, {
             error: error?.message || String(error),
